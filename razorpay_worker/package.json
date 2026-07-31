@@ -1,0 +1,10 @@
+{
+  "name": "razorpay-worker",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240403.0",
+    "typescript": "^5.4.3",
+    "wrangler": "^3.43.0"
+  }
+}

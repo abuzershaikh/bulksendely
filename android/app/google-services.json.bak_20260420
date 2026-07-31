@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "872299940974",
+    "firebase_url": "https://marketingpro-ee5cc-default-rtdb.firebaseio.com",
+    "project_id": "marketingpro-ee5cc",
+    "storage_bucket": "marketingpro-ee5cc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:872299940974:android:7be03a66988f688bfcaa7f",
+        "android_client_info": {
+          "package_name": "com.bulksender.marketing.autoreply"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "872299940974-6sgm5mhafrfsmnen3s3209dpc1pjqn0e.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.bulksender.marketing.autoreply",
+            "certificate_hash": "a3dfe1dd89d776f7a9ea4e9d40643dd461858c78"
+          }
+        },
+        {
+          "client_id": "872299940974-bgq4qsd67jsmis77bfu23236t7a2hgue.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD_0oi_qXH_VbeMr3hOmNQ-8xE4sHXL_GM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "872299940974-bgq4qsd67jsmis77bfu23236t7a2hgue.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
