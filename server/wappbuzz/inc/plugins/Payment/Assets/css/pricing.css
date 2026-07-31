@@ -1,0 +1,66 @@
+@import url('reset.css');
+@import url('icomoon/icomoon.css');
+
+/*Pricing*/
+.pricing .featured{
+	top: 0px;
+	padding: 7px 0;
+	border-radius: 30px 30px 0 0;
+	text-align: center;
+}
+
+.pricing .pricing-feature-name{
+	display: none;
+}
+
+.pricing .pricing-feature-icon{
+	width: 100%;
+	text-align: center;
+}
+
+.pricing .pricing-feature-icon i{
+	position: relative;
+	top: -7px;
+}
+
+.pricing .pricing-feature-head{
+	opacity: 0;
+}
+
+@media (max-width: 768px) {
+    .pricing .pricing-feature-name{
+		display: block!important;
+	}
+
+	.pricing .pricing-feature-icon{
+		width: auto!important;
+	}
+
+	.pricing .pricing-feature-head{
+		opacity: 1!important;
+	}
+}
+
+.form-switch.form-switch-pricing{
+  margin-top: 40px;
+}
+
+.form-switch.form-switch-pricing .form-check-input{
+	margin: 0 15px 0 15px;
+	position: relative;
+	padding: 20px 40px;
+  	margin-top: 0;
+}
+
+.form-switch.form-switch-pricing .form-check-label{
+  font-size: 18px;
+}
+
+.form-switch.form-switch-pricing .form-check-input{
+  background-color: #0d6efd;
+  border-color: #0d6efd;
+}
+
+.form-switch.form-switch-pricing .form-check-input[type=checkbox] {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23fff'/%3e%3c/svg%3e")
+}

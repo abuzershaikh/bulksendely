@@ -1,0 +1,16 @@
+<?php return array (
+  'Search' => 'Search',
+  'Queue' => 'Queue',
+  'Published' => 'Published',
+  'Delete schedules' => 'Delete schedules',
+  'Submit' => 'Submit',
+  'A/B Testing' => 'A/B Testing',
+  'Are you sure to delete this items?' => 'Are you sure to delete this items?',
+  'Post successed' => 'Post successed',
+  'View post' => 'View post',
+  'Create notification' => 'Create notification',
+  'Success' => 'Success',
+  'Customize system interface' => 'Customize system interface',
+  'Schedules' => 'Schedules',
+  'Features' => 'Features',
+);

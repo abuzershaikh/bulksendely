@@ -1,0 +1,45 @@
+/* Omnichannel Styles */
+.omni-container {
+    height: calc(100vh - 120px) !important;
+    /* Adjust based on header */
+    min-height: 500px;
+}
+
+.omni-item {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.omni-item:hover,
+.omni-item.active {
+    background-color: #f8f9fa;
+}
+
+.omni-item.active {
+    border-left: 4px solid #4e73df !important;
+    background-color: #f1f5ff;
+}
+
+.msg-bubble {
+    border-radius: 12px;
+}
+
+.msg-bubble.bg-primary {
+    background-color: #4e73df !important;
+}
+
+.msg-bubble.bg-white {
+    background-color: #ffffff !important;
+}
+
+/* Scrollbars */
+.omni-list::-webkit-scrollbar,
+#message_area::-webkit-scrollbar {
+    width: 6px;
+}
+
+.omni-list::-webkit-scrollbar-thumb,
+#message_area::-webkit-scrollbar-thumb {
+    background-color: #ccc;
+    border-radius: 4px;
+}

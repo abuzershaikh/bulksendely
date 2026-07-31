@@ -1,0 +1,392 @@
+import 'package:autoreply/core/network/api_client.dart';
+import 'package:autoreply/data/local/linked_whatsapp_storage.dart';
+import 'package:autoreply/data/models/button_template_model.dart';
+import 'package:autoreply/data/models/contact_group_model.dart';
+import 'package:autoreply/features/autoreply/keyword_reply/models/keyword_reply_model.dart';
+import 'package:autoreply/features/autoreply/menu_reply/models/menu_reply_model.dart';
+import 'package:autoreply/features/autoreply/welcome_message/models/welcome_message_model.dart';
+import 'package:autoreply/features/subscription/models/app_user_subscription.dart';
+import 'package:autoreply/features/subscription/services/subscription_service.dart';
+
+class ServerSyncService {
+  final LinkedWhatsappStorage _linkedWhatsappStorage = LinkedWhatsappStorage();
+  final SubscriptionService _subscriptionService = SubscriptionService.instance;
+
+  Map<String, dynamic> _autoReplyAccessPayload() {
+    final isPremiumUser =
+        _subscriptionService.currentUserNotifier.value?.isPremium ?? false;
+    return {
+      'is_premium_user': isPremiumUser,
+      'free_auto_reply_limit': AppUserSubscription.freeAutoReplyLimit,
+    };
+  }
+
+  Future<int?> syncContactGroup(ContactGroupModel group) async {
+    final accessToken = await ApiClient.requireWaziperAccessToken();
+    final response = await ApiClient.post('Android_api/sync_contacts', {
+      'access_token': accessToken,
+      'group_name': group.name,
+      'source': group.source,
+      'contacts': group.contacts
+          .map((contact) => {'name': contact.name, 'number': contact.number})
+          .toList(),
+    });
+
+    if (response['status'] != 'success') {
+      throw Exception(response['message'] ?? 'Failed to sync contacts');
+    }
+
+    return response['data']?['server_group_id'] as int?;
+  }
+
+  Future<String?> syncTemplate(ButtonTemplateModel template) async {
+    final accessToken = await ApiClient.requireWaziperAccessToken();
+    if (template.templateType == TemplateLibraryType.list) {
+      final response = await ApiClient.post('Android_api/sync_templates', {
+        'access_token': accessToken,
+        'name': template.name,
+        'title': template.title,
+        'caption': template.caption,
+        'footer': template.footer,
+        'button_text': template.listButtonText,
+        'sections': template.sections
+            .map(
+              (section) => {
+                'title': section.title,
+                'rows': section.rows
+                    .map(
+                      (row) => {
+                        'id': row.id,
+                        'title': row.title,
+                        'description': row.description,
+                      },
+                    )
+                    .toList(),
+              },
+            )
+            .toList(),
+      });
+
+      if (response['status'] != 'success') {
+        throw Exception(response['message'] ?? 'Failed to sync list template');
+      }
+
+      return response['data']?['server_template_id']?.toString();
+    }
+
+    final response = await ApiClient.post('Android_api/sync_templates', {
+      'access_token': accessToken,
+      'name': template.name,
+      'title': template.title,
+      'caption': template.caption,
+      'footer': template.footer,
+      'image_url': template.imageUrl,
+      'buttons': template.buttons
+          .map(
+            (button) => {
+              'type': button.type.name,
+              'displayText': button.displayText,
+              'url': button.url,
+              'phoneNumber': button.phoneNumber,
+              'copyText': button.copyText,
+            },
+          )
+          .toList(),
+    });
+
+    if (response['status'] != 'success') {
+      throw Exception(response['message'] ?? 'Failed to sync template');
+    }
+
+    return response['data']?['server_template_id']?.toString();
+  }
+
+  Future<String> getActiveInstanceId() async {
+    final savedAccount = await _linkedWhatsappStorage.load();
+    final savedInstanceId = savedAccount?.instanceId ?? '';
+    if (savedInstanceId.isNotEmpty) {
+      return savedInstanceId;
+    }
+
+    final response = await ApiClient.get('api/active_instance', {
+      'access_token': await ApiClient.requireWaziperAccessToken(),
+    });
+
+    if (response['status'] == 'success') {
+      final instanceId = response['data']?['instance_id']?.toString() ?? '';
+      if (instanceId.isNotEmpty) {
+        return instanceId;
+      }
+    }
+
+    throw Exception(response['message'] ?? 'No active WhatsApp instance found');
+  }
+
+  Future<Map<String, dynamic>> sendMessage({
+    required String instanceId,
+    required String number,
+    required String message,
+  }) async {
+    final accessToken = await ApiClient.requireWaziperAccessToken();
+    final response = await ApiClient.post('api/send', {
+      'access_token': accessToken,
+      'instance_id': instanceId,
+      'number': number,
+      'type': 'text',
+      'message': message,
+    });
+
+    if (response['status'] != 'success') {
+      throw Exception(response['message'] ?? 'Failed to send message');
+    }
+
+    return response;
+  }
+
+  Future<Map<String, dynamic>> sendMediaMessage({
+    required String instanceId,
+    required String number,
+    required String type,
+    required String mediaUrl,
+    String caption = '',
+    String filename = '',
+  }) async {
+    final accessToken = await ApiClient.requireWaziperAccessToken();
+    final response = await ApiClient.post('api/send', {
+      'access_token': accessToken,
+      'instance_id': instanceId,
+      'number': number,
+      'type': type,
+      'message': caption,
+      'media_url': mediaUrl,
+      'filename': filename,
+    });
+
+    if (response['status'] != 'success') {
+      throw Exception(response['message'] ?? 'Failed to send media message');
+    }
+
+    return response;
+  }
+
+  Future<Map<String, dynamic>> sendTemplate({
+    required String instanceId,
+    required String number,
+    required String templateId,
+  }) async {
+    final accessToken = await ApiClient.requireWaziperAccessToken();
+    final response = await ApiClient.post('api/send', {
+      'access_token': accessToken,
+      'instance_id': instanceId,
+      'number': number,
+      'type': 'template',
+      'template_id': templateId,
+    });
+
+    if (response['status'] != 'success') {
+      throw Exception(response['message'] ?? 'Failed to send template');
+    }
+
+    return response;
+  }
+
+  Future<Map<String, dynamic>> launchCampaign({
+    required String instanceId,
+    required String campaignName,
+    required String targetName,
+    required int delaySeconds,
+    required String messageMode,
+    required String messageLabel,
+    required List<Map<String, dynamic>> recipients,
+    required Map<String, dynamic> payload,
+    int scheduleAt = 0,
+    String userEmail = '',
+  }) async {
+    final accessToken = await ApiClient.requireWaziperAccessToken();
+    final response = await ApiClient.post('Android_api/launch_campaign', {
+      'access_token': accessToken,
+      'instance_id': instanceId,
+      'campaign_name': campaignName,
+      'target_name': targetName,
+      'delay_seconds': delaySeconds,
+      'message_mode': messageMode,
+      'message_label': messageLabel,
+      'user_email': userEmail,
+      'schedule_at': scheduleAt,
+      'recipients': recipients,
+      'payload': payload,
+    });
+
+    if (response['status'] != 'success') {
+      throw Exception(response['message'] ?? 'Failed to launch campaign');
+    }
+
+    return response;
+  }
+
+  Future<Map<String, dynamic>> launchGroupCampaign({
+    required String instanceId,
+    required String campaignName,
+    required String targetName,
+    required String message,
+    required List<Map<String, dynamic>> recipients,
+    int delaySeconds = 0,
+    int scheduleAt = 0,
+    String userEmail = '',
+  }) {
+    return launchCampaign(
+      instanceId: instanceId,
+      campaignName: campaignName,
+      targetName: targetName,
+      delaySeconds: delaySeconds,
+      messageMode: 'group_text',
+      messageLabel: 'Linked Group Broadcast',
+      recipients: recipients,
+      payload: {'type': 'text', 'message': message},
+      scheduleAt: scheduleAt,
+      userEmail: userEmail,
+    );
+  }
+
+  Future<Map<String, dynamic>> fetchGroupScheduleLockStatus({
+    required String instanceId,
+    required String groupId,
+  }) async {
+    final accessToken = await ApiClient.requireWaziperAccessToken();
+    final response = await ApiClient.post('api/group_schedule_lock_status', {
+      'access_token': accessToken,
+      'instance_id': instanceId,
+      'group_id': groupId,
+    });
+
+    if (response['status'] != 'success') {
+      throw Exception(response['message'] ?? 'Failed to check group schedule lock');
+    }
+
+    return (response['data'] as Map?)?.cast<String, dynamic>() ?? {};
+  }
+
+  Future<String?> syncWelcomeMessage(WelcomeMessageFlow flow) async {
+    final instanceId = await getActiveInstanceId();
+    final accessToken = await ApiClient.requireWaziperAccessToken();
+    final response = await ApiClient.post('api/welcome_messages/save', {
+      'access_token': accessToken,
+      'instance_id': instanceId,
+      'flow_id': flow.serverId ?? flow.id,
+      'name': flow.name,
+      'status': flow.isActive ? 1 : 0,
+      'steps': flow.steps
+          .map(
+            (step) => {
+              'id': step.id,
+              'type': step.type.name,
+              'text': step.text,
+              'media_type': step.mediaType?.name,
+              'media_url': step.mediaUrl,
+              'filename': step.filename,
+              'template_id': step.templateId,
+              'template_name': step.templateName,
+            },
+          )
+          .toList(),
+      ..._autoReplyAccessPayload(),
+    });
+
+    if (response['status'] != 'success') {
+      throw Exception(response['message'] ?? 'Failed to sync welcome message');
+    }
+
+    return response['data']?['flow_id']?.toString();
+  }
+
+  Future<String?> syncKeywordReply(KeywordReplyFlow flow) async {
+    final instanceId = await getActiveInstanceId();
+    final accessToken = await ApiClient.requireWaziperAccessToken();
+    final response = await ApiClient.post('api/keyword_replies/save', {
+      'access_token': accessToken,
+      'instance_id': instanceId,
+      'flow_id': flow.serverId ?? flow.id,
+      'name': flow.name,
+      'status': flow.isActive ? 1 : 0,
+      'keywords': flow.keywords,
+      'steps': flow.steps
+          .map(
+            (step) => {
+              'id': step.id,
+              'type': step.type.name,
+              'text': step.text,
+              'template_id': step.templateId,
+              'template_name': step.templateName,
+            },
+          )
+          .toList(),
+      ..._autoReplyAccessPayload(),
+    });
+
+    if (response['status'] != 'success') {
+      throw Exception(response['message'] ?? 'Failed to sync keyword reply');
+    }
+
+    return response['data']?['flow_id']?.toString();
+  }
+
+  Future<String?> syncMenuReply(MenuReplyFlow flow) async {
+    final instanceId = await getActiveInstanceId();
+    final accessToken = await ApiClient.requireWaziperAccessToken();
+    final response = await ApiClient.post('api/menu_replies/save', {
+      'access_token': accessToken,
+      'instance_id': instanceId,
+      'flow_id': flow.serverId ?? flow.id,
+      'name': flow.name,
+      'status': flow.isActive ? 1 : 0,
+      'keywords': flow.keywords,
+      'root_node_id': flow.rootNodeId,
+      'nodes': flow.nodes
+          .map(
+            (node) => {
+              'id': node.id,
+              'name': node.name,
+              'title': node.title,
+              'body': node.body,
+              'footer': node.footer,
+              'button_text': node.buttonText,
+              'rows': node.rows
+                  .map(
+                    (row) => {
+                      'id': row.id,
+                      'title': row.title,
+                      'description': row.description,
+                      'action': {
+                        'type': row.action.type.name,
+                        'next_node_id': row.action.nextNodeId,
+                        'steps': row.action.steps
+                            .map(
+                              (step) => {
+                                'id': step.id,
+                                'type': step.type.name,
+                                'text': step.text,
+                                'template_id': step.templateId,
+                                'template_name': step.templateName,
+                                'media_type': step.mediaType?.name,
+                                'media_url': step.mediaUrl,
+                                'filename': step.filename,
+                              },
+                            )
+                            .toList(),
+                      },
+                    },
+                  )
+                  .toList(),
+            },
+          )
+          .toList(),
+      ..._autoReplyAccessPayload(),
+    });
+
+    if (response['status'] != 'success') {
+      throw Exception(response['message'] ?? 'Failed to sync menu reply');
+    }
+
+    return response['data']?['flow_id']?.toString();
+  }
+}

@@ -1,0 +1,15 @@
+diff --git a/node_modules/@whiskeysockets/baileys/lib/Utils/decode-wa-message.js b/node_modules/@whiskeysockets/baileys/lib/Utils/decode-wa-message.js
+index 56594af..6a42ae8 100644
+--- a/node_modules/@whiskeysockets/baileys/lib/Utils/decode-wa-message.js
++++ b/node_modules/@whiskeysockets/baileys/lib/Utils/decode-wa-message.js
+@@ -142,7 +142,9 @@ export const decryptMessageNode = (stanza, meId, meLid, repository, logger) => {
+                                 break;
+                             case 'pkmsg':
+                             case 'msg':
+-                                const user = isJidUser(sender) ? sender : author;
++                                // ✅ FIX: Support both @s.whatsapp.net and @lid formats
++                                // isJidUser only checks for @s.whatsapp.net, but messages can also come with @lid
++                                const user = (isJidUser(sender) || isLidUser(sender)) ? sender : author;
+                                 msgBuffer = await repository.decryptMessage({
+                                     jid: user,
+                                     type: e2eType,

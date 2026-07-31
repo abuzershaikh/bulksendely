@@ -1,0 +1,5128 @@
+/* ========================================================================
+   DelyntroBot Design System v2.0 — Modern SaaS Dashboard Overrides
+   
+   ⚠️ CSS-ONLY FILE — No backend, PHP, JS logic, or route changes.
+   All existing class names and IDs are preserved.
+   ======================================================================== */
+
+/* ─────────────────────────────────────────────
+   1. DESIGN TOKENS (CSS Custom Properties)
+   ───────────────────────────────────────────── */
+:root {
+    /* ========================================================================
+       PREMIUM LIGHT THEME — Modern SaaS Palette
+       ======================================================================== */
+
+    /* AI Brand Colors - Neon & Deep Space (Shared) */
+    --dl-primary: #6366F1; /* Electric Indigo */
+    --dl-primary-light: #818CF8;
+    --dl-primary-lighter: rgba(99, 102, 241, 0.1); /* Glassy primary */
+    --dl-primary-dark: #4F46E5;
+    --dl-primary-darker: #3730A3;
+    --dl-primary-rgb: 99, 102, 241;
+
+    --dl-accent: #0EA5E9; /* Cyan Neon */
+    --dl-accent-light: #38BDF8;
+    --dl-accent-lighter: rgba(14, 165, 233, 0.1);
+    --dl-accent-dark: #0284C7;
+
+    --dl-secondary: #D946EF; /* Fuchsia Neon */
+    --dl-secondary-light: #E879F9;
+    --dl-secondary-lighter: rgba(217, 70, 239, 0.1);
+    --dl-secondary-dark: #C026D3;
+
+    /* Light Theme Palette - REFINED */
+    --dl-bg: #F8FAFC; /* Slate 50 - Crisp background */
+    --dl-bg-card: #FFFFFF; /* Pure White */
+    --dl-bg-dark: #FFFFFF; 
+    --dl-bg-elevated: #FFFFFF;
+    --dl-bg-alt: #F1F5F9; /* Slate 100 */
+    --dl-bg-chat: #EFEAE2; 
+    
+    --dl-text-primary: #0F172A; /* Slate 900 - Sharp text */
+    --dl-text-secondary: #475569; /* Slate 600 */
+    --dl-text-muted: #94A3B8; /* Slate 400 */
+    --dl-text-subtle: #CBD5E1; /* Slate 300 */
+    
+    --dl-border: #E2E8F0; /* Slate 200 - Subtle borders */
+    --dl-border-light: #F1F5F9; /* Slate 100 */
+
+    /* Gradients (Light) */
+    --dl-gradient-primary: linear-gradient(135deg, #6366F1 0%, #818CF8 100%); /* Smoother Indigo */
+    --dl-gradient-sidebar: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+    --dl-gradient-header: linear-gradient(90deg, #FFFFFF 0%, #F8FAFC 100%);
+    --dl-gradient-accent: linear-gradient(135deg, #0EA5E9 0%, #38BDF8 100%);
+    --dl-gradient-card-hover: linear-gradient(135deg, rgba(99, 102, 241, 0.03) 0%, rgba(168, 85, 247, 0.01) 100%);
+    --dl-gradient-glow: radial-gradient(800px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(99, 102, 241, 0.03), transparent 40%);
+    --dl-gradient-body: linear-gradient(135deg, #F8FAFC 0%, #EFF6FF 100%); /* Cleaner Slate/Blue tint */
+
+    /* Shadows (Refined for Light Mode) */
+    --dl-shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --dl-shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+    --dl-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+    --dl-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
+    --dl-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    --dl-shadow-glow: 0 0 15px rgba(99, 102, 241, 0.1);
+    --dl-shadow-card: 0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.03); /* Very subtle for cards */
+    --dl-shadow-card-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+
+    /* Typography */
+    --dl-font: 'Inter', system-ui, -apple-system, blinkmacsystemfont, 'Segoe UI', roboto, oxygen, ubuntu, cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    --dl-font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+    /* Spacing */
+    --dl-radius-sm: 8px;
+    --dl-radius-md: 14px;
+    --dl-radius-lg: 20px;
+    --dl-radius-xl: 24px;
+    --dl-radius-full: 9999px;
+
+    /* Transitions */
+    --dl-transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    --dl-transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+    --dl-transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
+    --dl-transition-spring: 600ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+
+/* ─────────────────────────────────────────────
+   2. BASE / GLOBAL OVERRIDES
+   ───────────────────────────────────────────── */
+body, html {
+    font-family: var(--dl-font) !important;
+    -webkit-font-smoothing: antialiased !important;
+    -moz-osx-font-smoothing: grayscale !important;
+    text-rendering: optimizeLegibility !important;
+}
+
+/* Base Body Optimizations */
+body {
+    background: var(--dl-gradient-body) !important;
+    background-attachment: fixed !important;
+    color: var(--dl-text-primary) !important;
+    min-height: 100vh;
+}
+
+/* Animated Background Orbs - OPTIMIZED */
+body::before {
+    content: '';
+    position: fixed;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background:
+        radial-gradient(ellipse 600px 400px at 20% 30%, rgba(99, 102, 241, 0.08) 0%, transparent 70%),
+        radial-gradient(ellipse 500px 500px at 80% 20%, rgba(217, 70, 239, 0.06) 0%, transparent 70%),
+        radial-gradient(ellipse 400px 300px at 60% 80%, rgba(14, 165, 233, 0.05) 0%, transparent 70%);
+    /* Animation removed for performance on lagging systems. Uncomment if hardware accel is sufficient. */
+    /* animation: dlOrbs 20s ease-in-out infinite; */
+    transform: translateZ(0); /* Promote to GPU layer */
+    pointer-events: none;
+    z-index: 0;
+    will-change: transform;
+}
+
+@keyframes dlOrbs {
+    0%, 100% { transform: translate(0, 0) rotate(0deg); }
+    33% { transform: translate(30px, -20px) rotate(5deg); }
+    66% { transform: translate(-20px, 20px) rotate(-3deg); }
+}
+
+/* Page Fade-in Animation */
+body > .d-flex.h-100 {
+    animation: dlFadeInPage 0.4s ease-out;
+}
+
+@keyframes dlFadeInPage {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Custom Scrollbar — Premium thin style */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { 
+    background: #CBD5E1; 
+    border-radius: 10px; 
+}
+::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+
+/* Selection Color */
+::selection {
+    background: rgba(79, 70, 229, 0.15);
+    color: var(--dl-primary-dark);
+}
+
+/* ─────────────────────────────────────────────
+   3. HEADER REDESIGN
+   ───────────────────────────────────────────── */
+.header {
+    background: rgba(255, 255, 255, 0.95) !important; /* increased opacity */
+    /* backdrop-filter: blur(20px) saturate(180%) !important; -- Removed for scroll perf */
+    /* -webkit-backdrop-filter: blur(20px) saturate(180%) !important; */
+    border-bottom: 1px solid var(--dl-border) !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+    z-index: 100 !important;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+.header h1 {
+    font-family: var(--dl-font) !important;
+    font-weight: 800 !important;
+    letter-spacing: -0.5px !important;
+}
+
+.header .text-primary {
+    background: var(--dl-gradient-primary) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text !important;
+}
+
+/* Mobile sidebar button */
+.btn-open-sidebar {
+    border-radius: var(--dl-radius-md) !important;
+    background: var(--dl-primary-lighter) !important;
+    color: var(--dl-primary) !important;
+    border: none !important;
+    transition: var(--dl-transition-base) !important;
+}
+
+.btn-open-sidebar:hover {
+    background: var(--dl-primary) !important;
+    color: #fff !important;
+    transform: scale(1.05);
+}
+
+/* ─────────────────────────────────────────────
+   4. SIDEBAR REDESIGN — Premium Dark Gradient
+   ───────────────────────────────────────────── */
+.sidebar-wrapper {
+    position: relative;
+    z-index: 200;
+}
+
+.sidebar {
+    background: var(--dl-gradient-sidebar) !important;
+    border-right: none !important;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.08) !important;
+    transition: var(--dl-transition-slow) !important;
+}
+
+/* Logo area */
+.sidebar .sidebar-logo {
+    padding: 24px 20px !important;
+    border-bottom: 1px solid var(--dl-border-light) !important;
+    margin-bottom: 8px !important;
+}
+
+.sidebar .sidebar-logo a {
+    transition: var(--dl-transition-base) !important;
+}
+
+.sidebar .sidebar-logo a:hover {
+    transform: scale(1.02);
+}
+
+.sidebar .sidebar-logo .logo-big h2 {
+    color: var(--dl-text-primary) !important;
+    -webkit-text-fill-color: unset !important;
+    background: none !important;
+}
+
+.sidebar .sidebar-logo .logo-big h2 .text-primary,
+.sidebar .sidebar-logo .logo-big .text-primary {
+    color: var(--dl-primary) !important;
+    -webkit-text-fill-color: var(--dl-primary) !important;
+    background: none !important;
+}
+
+/* Navigation links */
+.sidebar .sidebar-nav .nav .nav-link,
+.sidebar .sidebar-footer .nav-link {
+    border-radius: var(--dl-radius-md) !important;
+    margin: 2px 12px !important;
+    padding: 11px 16px !important;
+    color: var(--dl-text-secondary) !important;
+    font-weight: 500 !important;
+    font-size: 13px !important;
+    transition: all var(--dl-transition-base) !important;
+    position: relative !important;
+    overflow: hidden !important;
+}
+
+.sidebar .sidebar-nav .nav .nav-link i,
+.sidebar .sidebar-footer .nav-link i {
+    transition: transform 0.2s ease, text-shadow 0.2s ease !important;
+    font-size: 20px !important;
+    width: 28px !important;
+    text-align: center !important;
+    /* filter: drop-shadow(0 0 8px currentColor) drop-shadow(0 0 3px currentColor) brightness(1.2); -- Removed for performance */
+    text-shadow: 0 0 10px currentColor; /* Faster alternative */
+}
+
+.sidebar .sidebar-nav .nav .nav-link span,
+.sidebar .sidebar-footer .nav-link span {
+    color: var(--dl-text-secondary) !important;
+    font-weight: 500 !important;
+    transition: all var(--dl-transition-base) !important;
+}
+
+/* Hover state */
+.sidebar .sidebar-nav .nav .nav-link:hover,
+.sidebar .sidebar-footer .nav-link:hover {
+    background: var(--dl-primary-lighter) !important;
+    color: var(--dl-primary) !important;
+    transform: translateX(4px) !important;
+}
+
+.sidebar .sidebar-nav .nav .nav-link:hover i,
+.sidebar .sidebar-footer .nav-link:hover i {
+    filter: drop-shadow(0 0 10px currentColor) brightness(1.35) !important;
+    transform: scale(1.15);
+}
+
+.sidebar .sidebar-nav .nav .nav-link:hover span,
+.sidebar .sidebar-footer .nav-link:hover span {
+    color: var(--dl-primary) !important;
+}
+
+/* Hover glow effect */
+.sidebar .sidebar-nav .nav .nav-link::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%) scaleY(0);
+    width: 3px;
+    height: 60%;
+    background: var(--dl-primary-light);
+    border-radius: 0 4px 4px 0;
+    transition: transform var(--dl-transition-base);
+}
+
+.sidebar .sidebar-nav .nav .nav-link:hover::before {
+    transform: translateY(-50%) scaleY(1);
+}
+
+/* Active state */
+.sidebar .sidebar-nav .nav .nav-link.active,
+.sidebar .sidebar-footer .nav-link.active {
+    background: var(--dl-primary-lighter) !important;
+    color: var(--dl-primary) !important;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2) !important;
+    font-weight: 600 !important;
+}
+
+.sidebar .sidebar-nav .nav .nav-link.active i,
+.sidebar .sidebar-footer .nav-link.active i {
+    filter: drop-shadow(0 0 10px currentColor) brightness(1.3) !important;
+}
+
+.sidebar .sidebar-nav .nav .nav-link.active span,
+.sidebar .sidebar-footer .nav-link.active span {
+    color: var(--dl-primary) !important;
+    font-weight: 600 !important;
+}
+
+.sidebar .sidebar-nav .nav .nav-link.active::before {
+    transform: translateY(-50%) scaleY(1) !important;
+    background: var(--dl-accent) !important;
+}
+
+/* Nav separator lines */
+.sidebar .nav-line {
+    background: var(--dl-border) !important;
+    height: 1px !important;
+    margin: 8px 24px !important;
+    border: none !important;
+}
+
+/* Sub-menu accordion */
+.sidebar .menu-sub.menu-sub-accordion {
+    background: var(--dl-border-light) !important;
+    border-radius: var(--dl-radius-sm) !important;
+    margin: 4px 12px 4px 44px !important;
+    padding: 0 !important;
+    display: none; /* Ensure hidden by default for JS toggle */
+    overflow: hidden;
+}
+
+/* Sidebar Dropdown Arrow */
+.sidebar .nav-item.have-menus-sub > .nav-link {
+    padding-right: 35px !important;
+}
+
+.sidebar .nav-item.have-menus-sub > .nav-link::after {
+    content: '\f078'; /* FontAwesome chevron-down */
+    font-family: 'Font Awesome 5 Pro', 'FontAwesome';
+    font-weight: 900;
+    position: absolute;
+    right: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 10px;
+    color: var(--dl-text-muted);
+    transition: transform 0.2s ease;
+}
+
+.sidebar .nav-item.have-menus-sub.menu-open > .nav-link::after,
+.sidebar .nav-item.have-menus-sub .nav-link[aria-expanded="true"]::after {
+    transform: translateY(-50%) rotate(180deg);
+    color: var(--dl-primary);
+}
+
+.sidebar .menu-sub .menu-link {
+    color: var(--dl-text-secondary) !important;
+    font-size: 12.5px !important;
+    padding: 6px 12px !important;
+    border-radius: 6px !important;
+    transition: all var(--dl-transition-fast) !important;
+}
+
+.sidebar .menu-sub .menu-link:hover {
+    color: var(--dl-primary-dark) !important;
+    background: var(--dl-primary-lighter) !important;
+    padding-left: 16px !important;
+}
+
+.sidebar .menu-sub .menu-link.text-primary {
+    color: var(--dl-primary-light) !important;
+    font-weight: 600 !important;
+    -webkit-text-fill-color: var(--dl-primary-light) !important;
+    background: none !important;
+}
+
+/* Sidebar footer styling */
+.sidebar .sidebar-footer {
+    border-top: 1px solid var(--dl-border) !important;
+    padding-top: 8px !important;
+}
+
+.sidebar .menu-separator {
+    background: var(--dl-border) !important;
+    height: 1px !important;
+    margin: 4px 20px !important;
+}
+
+/* Dark mode sidebar overrides (keep dark sidebar consistent) */
+body.sidebar-dark .sidebar,
+body.dark .sidebar {
+    background: var(--dl-gradient-sidebar) !important;
+    border-right: 1px solid var(--dl-border-light) !important;
+    backdrop-filter: blur(20px) !important;
+}
+
+/* ─────────────────────────────────────────────
+   5. DASHBOARD CARDS
+   ───────────────────────────────────────────── */
+.card:not(.wa-stat-card):not(.wa-stat-sent):not(.wa-stat-bulk):not(.wa-stat-auto):not(.wa-stat-chatbot):not([style*="gradient"]) {
+    background: var(--dl-bg-card) !important;
+    border: 1px solid var(--dl-border) !important;
+    border-radius: var(--dl-radius-lg) !important;
+    box-shadow: var(--dl-shadow-card) !important;
+    transition: transform 0.25s ease, box-shadow 0.25s ease !important;
+    overflow: hidden !important;
+    position: relative !important;
+    will-change: transform;
+}
+
+.card:not(.wa-stat-card):not(.wa-stat-sent):not(.wa-stat-bulk):not(.wa-stat-auto):not(.wa-stat-chatbot):not([style*="gradient"])::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--dl-gradient-glow);
+    opacity: 0;
+    transition: opacity var(--dl-transition-slow);
+    pointer-events: none;
+    z-index: 0;
+}
+
+.card:not(.wa-stat-card):not(.wa-stat-sent):not(.wa-stat-bulk):not(.wa-stat-auto):not(.wa-stat-chatbot):not([style*="gradient"]):hover {
+    border-color: rgba(79, 70, 229, 0.15) !important;
+    box-shadow: var(--dl-shadow-card-hover) !important;
+    transform: translateY(-4px) !important;
+}
+
+.card:not(.wa-stat-card):not(.wa-stat-sent):not(.wa-stat-bulk):not(.wa-stat-auto):not(.wa-stat-chatbot):not([style*="gradient"]):hover::before {
+    opacity: 1;
+}
+
+.card-body {
+    position: relative;
+    z-index: 1;
+}
+
+/* Dashboard feature cards (top row) */
+.container .row .col-md-3 .card {
+    transition: all var(--dl-transition-slow) !important;
+}
+
+.container .row .col-md-3 .card:hover {
+    transform: translateY(-6px) scale(1.01) !important;
+}
+
+/* Icon circles in dashboard cards */
+.container .row .col-md-3 .card .rounded-circle {
+    transition: all var(--dl-transition-base) !important;
+    border-radius: var(--dl-radius-md) !important;
+}
+
+.container .row .col-md-3 .card:hover .rounded-circle {
+    transform: scale(1.1) rotate(5deg);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+}
+
+/* Card titles */
+.card-title {
+    font-family: var(--dl-font) !important;
+    font-weight: 700 !important;
+    color: var(--dl-text-primary) !important;
+    letter-spacing: -0.3px !important;
+}
+
+.card-text.text-muted {
+    color: var(--dl-text-muted) !important;
+    font-size: 13px !important;
+}
+
+/* ─────────────────────────────────────────────
+   6. BUTTONS — Gradient, Glow, Ripple
+   ───────────────────────────────────────────── */
+.btn {
+    font-family: var(--dl-font) !important;
+    font-weight: 600 !important;
+    letter-spacing: -0.1px !important;
+    border-radius: var(--dl-radius-sm) !important;
+    transition: all var(--dl-transition-base) !important;
+    position: relative !important;
+    overflow: hidden !important;
+}
+
+/* Primary Button — Indigo gradient */
+.btn-primary {
+    background: var(--dl-gradient-primary) !important;
+    border: none !important;
+    box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35) !important;
+    color: #fff !important;
+    padding: 10px 24px !important;
+}
+
+.btn-primary:hover {
+    box-shadow: 0 8px 25px rgba(79, 70, 229, 0.45) !important;
+    transform: translateY(-2px) !important;
+    filter: brightness(1.1) !important;
+}
+
+.btn-primary:active {
+    transform: translateY(0) scale(0.98) !important;
+    box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3) !important;
+}
+
+/* Success Button — Green gradient */
+.btn-success {
+    background: var(--dl-gradient-accent) !important;
+    border: none !important;
+    box-shadow: 0 4px 14px rgba(34, 197, 94, 0.3) !important;
+    color: #fff !important;
+}
+
+.btn-success:hover {
+    box-shadow: 0 8px 25px rgba(34, 197, 94, 0.4) !important;
+    transform: translateY(-2px) !important;
+}
+
+/* Info/Cyan Button */
+.btn-info {
+    background: linear-gradient(135deg, #06B6D4 0%, #0EA5E9 100%) !important;
+    border: none !important;
+    box-shadow: 0 4px 14px rgba(6, 182, 212, 0.3) !important;
+    color: #fff !important;
+}
+
+/* Light Buttons */
+.btn-light,
+.btn-bg-light {
+    background: var(--dl-border-light) !important;
+    border: 1px solid var(--dl-border) !important;
+    color: var(--dl-text-secondary) !important;
+}
+
+.btn-light:hover,
+.btn-bg-light:hover {
+    background: var(--dl-primary-lighter) !important;
+    border-color: rgba(79, 70, 229, 0.15) !important;
+    color: var(--dl-primary) !important;
+}
+
+/* Outlined buttons */
+.btn-outline-primary {
+    border: 2px solid var(--dl-primary) !important;
+    color: var(--dl-primary) !important;
+    background: transparent !important;
+}
+
+.btn-outline-primary:hover {
+    background: var(--dl-primary) !important;
+    color: #fff !important;
+    box-shadow: 0 4px 14px rgba(79, 70, 229, 0.3) !important;
+}
+
+/* Small buttons (in cards) */
+.btn-sm {
+    padding: 7px 16px !important;
+    font-size: 12.5px !important;
+    border-radius: var(--dl-radius-sm) !important;
+    font-weight: 600 !important;
+}
+
+/* Button Ripple Effect (CSS-only) */
+.btn::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    transition: width 0.5s ease, height 0.5s ease, opacity 0.5s ease;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.btn:active::after {
+    width: 300px;
+    height: 300px;
+    opacity: 1;
+    transition: 0s;
+}
+
+/* Light primary button variant */
+.btn-light-primary {
+    background: var(--dl-primary-lighter) !important;
+    color: var(--dl-primary) !important;
+    border: none !important;
+}
+
+.btn-light-primary:hover {
+    background: rgba(79, 70, 229, 0.15) !important;
+    color: var(--dl-primary-dark) !important;
+}
+
+/* ─────────────────────────────────────────────
+   7. FORM CONTROLS — Modern, Clean
+   ───────────────────────────────────────────── */
+.form-control {
+    font-family: var(--dl-font) !important;
+    border-radius: var(--dl-radius-sm) !important;
+    border: 1.5px solid var(--dl-border) !important;
+    padding: 10px 16px !important;
+    font-size: 14px !important;
+    background-color: #fff !important;
+    color: var(--dl-text-primary) !important;
+    transition: all var(--dl-transition-base) !important;
+    box-shadow: var(--dl-shadow-xs) !important;
+}
+
+.form-select {
+    font-family: var(--dl-font) !important;
+    border-radius: var(--dl-radius-sm) !important;
+    border: 1.5px solid var(--dl-border) !important;
+    padding: 10px 16px !important;
+    font-size: 14px !important;
+    background-color: #fff !important;
+    color: var(--dl-text-primary) !important;
+    transition: all var(--dl-transition-base) !important;
+    box-shadow: var(--dl-shadow-xs) !important;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e") !important;
+    background-repeat: no-repeat !important;
+    background-position: right 1rem center !important;
+    background-size: 16px 12px !important;
+}
+
+.form-control:focus,
+.form-select:focus {
+    border-color: var(--dl-primary) !important;
+    box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.08), var(--dl-shadow-xs) !important;
+    outline: none !important;
+}
+
+.form-control::placeholder {
+    color: var(--dl-text-subtle) !important;
+}
+
+.form-label {
+    font-weight: 600 !important;
+    font-size: 13px !important;
+    color: var(--dl-text-secondary) !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    margin-bottom: 6px !important;
+}
+
+/* Search inputs in sidebar */
+.sp-input-group {
+    background: rgba(255, 255, 255, 0.95) !important;
+    border: 1.5px solid var(--dl-border) !important;
+    border-radius: var(--dl-radius-md) !important;
+    overflow: hidden !important;
+    box-shadow: var(--dl-shadow-sm) !important;
+    transition: all var(--dl-transition-base) !important;
+}
+
+.sp-input-group:focus-within {
+    border-color: var(--dl-primary) !important;
+    box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.08), var(--dl-shadow-sm) !important;
+}
+
+.sp-input-group span,
+.sp-input-group a {
+    background: transparent !important;
+    border: none !important;
+    color: var(--dl-text-muted) !important;
+}
+
+.sp-input-group input {
+    background: transparent !important;
+    font-weight: 500 !important;
+    font-family: var(--dl-font) !important;
+}
+
+/* Toggle switches (form-check) */
+.form-check-input:checked {
+    background-color: var(--dl-primary) !important;
+    border-color: var(--dl-primary) !important;
+}
+
+.form-switch .form-check-input {
+    border-radius: var(--dl-radius-full) !important;
+    height: 1.4em !important;
+    width: 2.5em !important;
+}
+
+/* ─────────────────────────────────────────────
+   8. BADGES — Modern Pill Style
+   ───────────────────────────────────────────── */
+.badge {
+    font-family: var(--dl-font) !important;
+    border-radius: 6px !important;
+    padding: 5px 10px !important;
+    font-weight: 600 !important;
+    font-size: 11px !important;
+    letter-spacing: 0.3px !important;
+    text-transform: uppercase !important;
+}
+
+.bg-primary, .badge.bg-primary {
+    background: var(--dl-primary) !important;
+}
+
+.bg-success, .badge.bg-success {
+    background: var(--dl-accent) !important;
+}
+
+.bg-info, .badge.bg-info {
+    background: var(--dl-secondary) !important;
+}
+
+/* Soft badge variants */
+.bg-soft-primary {
+    background: var(--dl-primary-lighter) !important;
+    color: var(--dl-primary) !important;
+}
+
+.bg-soft-success {
+    background: var(--dl-accent-lighter) !important;
+    color: var(--dl-accent-dark) !important;
+}
+
+.bg-soft-danger {
+    background: rgba(239, 68, 68, 0.15) !important;
+    color: #FCA5A5 !important;
+}
+
+.bg-soft-warning {
+    background: rgba(245, 158, 11, 0.15) !important;
+    color: #FCD34D !important;
+}
+
+.bg-soft-info {
+    background: var(--dl-secondary-lighter) !important;
+    color: var(--dl-secondary-dark) !important;
+}
+
+/* ─────────────────────────────────────────────
+   9. TYPOGRAPHY ENHANCEMENTS
+   ───────────────────────────────────────────── */
+h1, h2, h3, h4, h5, h6,
+.h1, .h2, .h3, .h4, .h5, .h6 {
+    font-family: var(--dl-font) !important;
+    letter-spacing: -0.3px !important;
+}
+/* Apply dark text only to headings NOT inside gradient containers */
+h1:not(.slm-kpi-val):not(.wa-stat-value),
+h2:not(.slm-kpi-val):not(.wa-stat-value),
+h3:not(.slm-kpi-val):not(.wa-stat-value),
+h4, h5, h6,
+.h1, .h2, .h3, .h4, .h5, .h6 {
+    color: var(--dl-text-primary);
+}
+
+h1, .h1 { font-weight: 800 !important; }
+h2, .h2 { font-weight: 700 !important; }
+h3, .h3 { font-weight: 700 !important; }
+h4, .h4 { font-weight: 600 !important; }
+h5, .h5 { font-weight: 600 !important; }
+
+.text-muted {
+    color: var(--dl-text-muted) !important;
+}
+
+.text-primary {
+    color: var(--dl-primary) !important;
+}
+
+/* Gradient text for page headings */
+.bd-search h2,
+.sub-sidebar h2 {
+    font-weight: 800 !important;
+    letter-spacing: -0.5px !important;
+    background: linear-gradient(135deg, #818CF8 0%, #38BDF8 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text !important;
+}
+
+/* ─────────────────────────────────────────────
+   10. TABLES — Clean, Modern
+   ───────────────────────────────────────────── */
+.table {
+    font-family: var(--dl-font) !important;
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+}
+
+.table thead th {
+    background: var(--dl-border-light) !important;
+    font-weight: 600 !important;
+    font-size: 12px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    color: var(--dl-text-muted) !important;
+    border-bottom: 2px solid var(--dl-border) !important;
+    padding: 12px 16px !important;
+}
+
+.table tbody td {
+    padding: 14px 16px !important;
+    border-bottom: 1px solid var(--dl-border-light) !important;
+    vertical-align: middle !important;
+    font-size: 13.5px !important;
+    transition: background var(--dl-transition-fast) !important;
+}
+
+.table tbody tr:hover td {
+    background: rgba(99, 102, 241, 0.06) !important;
+}
+
+.table tbody tr:last-child td {
+    border-bottom: none !important;
+}
+
+/* ─────────────────────────────────────────────
+   11. ALERTS — Soft, Modern
+   ───────────────────────────────────────────── */
+.alert {
+    border-radius: var(--dl-radius-md) !important;
+    border: none !important;
+    font-family: var(--dl-font) !important;
+    padding: 16px 20px !important;
+}
+
+.alert-danger {
+    background: linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%) !important;
+    color: #991B1B !important;
+    border-left: 4px solid #EF4444 !important;
+}
+
+.alert-success {
+    background: linear-gradient(135deg, #F0FDF4 0%, #DCFCE7 100%) !important;
+    color: #166534 !important;
+    border-left: 4px solid #22C55E !important;
+}
+
+.alert-warning {
+    background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%) !important;
+    color: #92400E !important;
+    border-left: 4px solid #F59E0B !important;
+}
+
+.alert-info {
+    background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%) !important;
+    color: #1E40AF !important;
+    border-left: 4px solid #3B82F6 !important;
+}
+
+/* ─────────────────────────────────────────────
+   12. MODALS — Glass Effect
+   ───────────────────────────────────────────── */
+.modal-content {
+    border-radius: var(--dl-radius-xl) !important;
+    border: 1px solid var(--dl-border) !important;
+    box-shadow: var(--dl-shadow-xl), 0 0 80px rgba(79, 70, 229, 0.06) !important;
+    overflow: hidden !important;
+}
+
+.modal-header {
+    border-bottom: 1px solid var(--dl-border) !important;
+    padding: 20px 24px !important;
+}
+
+.modal-header .modal-title {
+    font-weight: 700 !important;
+    font-size: 18px !important;
+}
+
+.modal-body {
+    padding: 24px !important;
+}
+
+.modal-footer {
+    border-top: 1px solid var(--dl-border) !important;
+    padding: 16px 24px !important;
+}
+
+.modal-backdrop.show {
+    backdrop-filter: blur(4px) !important;
+    -webkit-backdrop-filter: blur(4px) !important;
+}
+
+/* ─────────────────────────────────────────────
+   13. SUB-SIDEBAR & SETTINGS PAGES
+   ───────────────────────────────────────────── */
+.sub-sidebar {
+    background: rgba(15, 23, 42, 0.65) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border-right: 1px solid var(--dl-border-light) !important;
+    box-shadow: 10px 0 30px rgba(0, 0, 0, 0.2) !important;
+}
+
+.sub-sidebar h2 {
+    font-size: 20px !important;
+    font-weight: 800 !important;
+    color: #f8fafc !important; /* White */
+    text-shadow: 0 0 10px rgba(0,0,0,0.5);
+}
+
+/* Settings menu items */
+.sp-menu .menu-item .menu-link {
+    border-radius: var(--dl-radius-sm) !important;
+    padding: 10px 14px !important;
+    margin-bottom: 2px !important;
+    font-weight: 500 !important;
+    font-size: 13.5px !important;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    color: #94a3b8 !important; /* Slate 400 */
+    border: 1px solid transparent !important;
+}
+
+.sp-menu .menu-item .menu-link:hover {
+    background: rgba(99, 102, 241, 0.2) !important; /* Indigo 500/20 */
+    color: #fff !important;
+    border-color: rgba(99, 102, 241, 0.3) !important;
+    transform: translateX(4px);
+    box-shadow: 0 0 15px rgba(99, 102, 241, 0.1) !important;
+}
+
+.sp-menu .menu-item .menu-link.active,
+.sp-menu .menu-item.active .menu-link {
+    background: linear-gradient(90deg, rgba(99, 102, 241, 0.25) 0%, rgba(99, 102, 241, 0.1) 100%) !important;
+    color: #fff !important;
+    font-weight: 600 !important;
+    border-left: 3px solid var(--dl-primary) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* ─────────────────────────────────────────────
+   14. MAIN CONTENT AREA
+   ───────────────────────────────────────────── */
+.main-wrapper {
+    background: transparent !important;
+}
+
+/* Container spacing */
+.container.px-4.py-4 {
+    padding: 28px 32px !important;
+    animation: dlSlideUp 0.4s ease-out;
+}
+
+@keyframes dlSlideUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ─────────────────────────────────────────────
+   15. LOADING INDICATOR
+   ───────────────────────────────────────────── */
+.loading {
+    background: rgba(15, 23, 42, 0.85) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+}
+
+.loading .loading-icon span {
+    background: var(--dl-primary) !important;
+}
+
+.ajax-loading {
+    background: var(--dl-gradient-primary) !important;
+    height: 3px !important;
+    border-radius: 0 0 2px 0 !important;
+}
+
+/* ─────────────────────────────────────────────
+   16. DROPDOWNS — Clean, Shadow
+   ───────────────────────────────────────────── */
+.dropdown-menu {
+    border-radius: var(--dl-radius-md) !important;
+    border: 1px solid var(--dl-border) !important;
+    box-shadow: var(--dl-shadow-lg) !important;
+    padding: 8px !important;
+    animation: dlDropdownIn 0.15s ease-out !important;
+}
+
+@keyframes dlDropdownIn {
+    from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.dropdown-item {
+    border-radius: 6px !important;
+    padding: 8px 12px !important;
+    font-size: 13.5px !important;
+    font-weight: 500 !important;
+    transition: all var(--dl-transition-fast) !important;
+}
+
+.dropdown-item:hover {
+    background: var(--dl-primary-lighter) !important;
+    color: var(--dl-primary) !important;
+}
+
+.dropdown-item.active,
+.dropdown-item:active {
+    background: var(--dl-primary) !important;
+    color: #fff !important;
+}
+
+/* ─────────────────────────────────────────────
+   17. PAGINATION — Modern Style
+   ───────────────────────────────────────────── */
+.pagination .page-link {
+    border-radius: var(--dl-radius-sm) !important;
+    border: 1px solid var(--dl-border) !important;
+    margin: 0 3px !important;
+    font-weight: 500 !important;
+    font-size: 13px !important;
+    color: var(--dl-text-secondary) !important;
+    transition: all var(--dl-transition-fast) !important;
+    padding: 8px 14px !important;
+}
+
+.pagination .page-link:hover {
+    background: var(--dl-primary-lighter) !important;
+    border-color: var(--dl-primary) !important;
+    color: var(--dl-primary) !important;
+}
+
+.pagination .page-item.active .page-link {
+    background: var(--dl-primary) !important;
+    border-color: var(--dl-primary) !important;
+    color: #fff !important;
+    box-shadow: 0 4px 10px rgba(79, 70, 229, 0.25) !important;
+}
+
+/* ─────────────────────────────────────────────
+   18. EMPTY STATES
+   ───────────────────────────────────────────── */
+img[src*="empty2.png"],
+img[src*="empty.png"] {
+    filter: grayscale(0.3) opacity(0.5) !important;
+    max-width: 220px !important;
+    margin: 0 auto 2rem !important;
+    display: block !important;
+    transition: all var(--dl-transition-slow) !important;
+}
+
+img[src*="empty2.png"]:hover,
+img[src*="empty.png"]:hover {
+    filter: grayscale(0) opacity(0.8) !important;
+    transform: scale(1.02);
+}
+
+/* ─────────────────────────────────────────────
+   19. PROGRESS BARS — Smooth Animation
+   ───────────────────────────────────────────── */
+.progress {
+    border-radius: var(--dl-radius-full) !important;
+    background: var(--dl-border-light) !important;
+    height: 6px !important;
+    overflow: hidden !important;
+}
+
+.progress-bar {
+    border-radius: var(--dl-radius-full) !important;
+    background: var(--dl-gradient-primary) !important;
+    transition: width 1s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    animation: dlProgressPulse 2s ease-in-out infinite;
+}
+
+@keyframes dlProgressPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.85; }
+}
+
+/* ─────────────────────────────────────────────
+   20. TOAST / NOTIFICATIONS
+   ───────────────────────────────────────────── */
+.iziToast {
+    border-radius: var(--dl-radius-md) !important;
+    font-family: var(--dl-font) !important;
+    box-shadow: var(--dl-shadow-lg) !important;
+}
+
+/* ─────────────────────────────────────────────
+   21. MICRO-ANIMATIONS & KEYFRAMES
+   ───────────────────────────────────────────── */
+
+/* Card stagger animation */
+.container .row .col-md-3:nth-child(1) .card { animation: dlCardIn 0.4s ease-out 0.05s both; }
+.container .row .col-md-3:nth-child(2) .card { animation: dlCardIn 0.4s ease-out 0.1s both; }
+.container .row .col-md-3:nth-child(3) .card { animation: dlCardIn 0.4s ease-out 0.15s both; }
+.container .row .col-md-3:nth-child(4) .card { animation: dlCardIn 0.4s ease-out 0.2s both; }
+
+@keyframes dlCardIn {
+    from { 
+        opacity: 0; 
+        transform: translateY(16px) scale(0.97); 
+    }
+    to { 
+        opacity: 1; 
+        transform: translateY(0) scale(1); 
+    }
+}
+
+/* Sidebar item stagger */
+.sidebar .nav .nav-item:nth-child(1) { animation: dlSlideRight 0.3s ease-out 0.02s both; }
+.sidebar .nav .nav-item:nth-child(2) { animation: dlSlideRight 0.3s ease-out 0.04s both; }
+.sidebar .nav .nav-item:nth-child(3) { animation: dlSlideRight 0.3s ease-out 0.06s both; }
+.sidebar .nav .nav-item:nth-child(4) { animation: dlSlideRight 0.3s ease-out 0.08s both; }
+.sidebar .nav .nav-item:nth-child(5) { animation: dlSlideRight 0.3s ease-out 0.10s both; }
+.sidebar .nav .nav-item:nth-child(6) { animation: dlSlideRight 0.3s ease-out 0.12s both; }
+.sidebar .nav .nav-item:nth-child(7) { animation: dlSlideRight 0.3s ease-out 0.14s both; }
+.sidebar .nav .nav-item:nth-child(8) { animation: dlSlideRight 0.3s ease-out 0.16s both; }
+.sidebar .nav .nav-item:nth-child(9) { animation: dlSlideRight 0.3s ease-out 0.18s both; }
+.sidebar .nav .nav-item:nth-child(10) { animation: dlSlideRight 0.3s ease-out 0.20s both; }
+.sidebar .nav .nav-item:nth-child(11) { animation: dlSlideRight 0.3s ease-out 0.22s both; }
+.sidebar .nav .nav-item:nth-child(12) { animation: dlSlideRight 0.3s ease-out 0.24s both; }
+
+@keyframes dlSlideRight {
+    from { opacity: 0; transform: translateX(-12px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+/* Icon pulse on hover */
+.card:hover i,
+.nav-link:hover i {
+    animation: dlIconPulse 0.3s ease-out;
+}
+
+@keyframes dlIconPulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.15); }
+    100% { transform: scale(1); }
+}
+
+/* Floating animation for dashboard icons */
+@keyframes dlFloat {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-4px); }
+}
+
+.container .row .col-md-3 .card .rounded-circle i {
+    animation: dlFloat 3s ease-in-out infinite;
+}
+
+/* Skeleton Loading (can be applied via JS) */
+.dl-skeleton {
+    background: linear-gradient(90deg, #F1F5F9 25%, #E2E8F0 50%, #F1F5F9 75%) !important;
+    background-size: 200% 100% !important;
+    animation: dlSkeleton 1.5s ease-in-out infinite !important;
+    border-radius: var(--dl-radius-sm) !important;
+    color: transparent !important;
+}
+
+@keyframes dlSkeleton {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* ─────────────────────────────────────────────
+   22. RESPONSIVE IMPROVEMENTS
+   ───────────────────────────────────────────── */
+@media (max-width: 768px) {
+    .container.px-4.py-4 {
+        padding: 16px 16px !important;
+    }
+    
+    .container .row .col-md-3 .card:hover {
+        transform: none !important;
+    }
+    
+    .sidebar {
+        box-shadow: 8px 0 32px rgba(0, 0, 0, 0.2) !important;
+    }
+    
+    .sidebar.active {
+        border-radius: 0 var(--dl-radius-xl) var(--dl-radius-xl) 0 !important;
+    }
+    
+    .modal-content {
+        border-radius: var(--dl-radius-lg) !important;
+        margin: 8px !important;
+    }
+}
+
+@media (max-width: 575px) {
+    .btn {
+        padding: 8px 16px !important;
+        font-size: 13px !important;
+    }
+    
+    h1, .h1 { font-size: 22px !important; }
+    h2, .h2 { font-size: 18px !important; }
+}
+
+/* ─────────────────────────────────────────────
+   23. SIDEBAR CLOSE/HOVER STATE FIXES
+   ───────────────────────────────────────────── */
+body.sidebar-close .sidebar {
+    background: var(--dl-gradient-sidebar) !important;
+    border-right: none !important;
+}
+
+body.sidebar-close .sidebar .nav-link {
+    justify-content: center !important;
+}
+
+body.sidebar-close .sidebar .nav-link i {
+    filter: drop-shadow(0 0 8px currentColor) brightness(1.2) !important;
+}
+
+body.sidebar-close .sidebar .nav-link.active i {
+    filter: drop-shadow(0 0 12px currentColor) brightness(1.4) !important;
+}
+
+body.sidebar-close .sidebar .nav-link::before {
+    display: none !important;
+}
+
+body.sidebar-hover .sidebar {
+    background: var(--dl-gradient-sidebar) !important;
+}
+
+/* Sidebar logo small icon on collapsed */
+body.sidebar-close .sidebar .logo-small {
+    filter: brightness(0) invert(1) !important;
+    opacity: 0.9 !important;
+}
+
+/* ─────────────────────────────────────────────
+   24. WEBUI POPOVER (sidebar popovers)
+   ───────────────────────────────────────────── */
+.webui-popover {
+    border-radius: var(--dl-radius-md) !important;
+    border: 1px solid var(--dl-border) !important;
+    box-shadow: var(--dl-shadow-lg) !important;
+}
+
+/* ─────────────────────────────────────────────
+   25. DARK MODE SUPPORT
+   ───────────────────────────────────────────── */
+body.dark,
+[data-theme="dark"] body {
+    /* Dark Mode Defaults */
+    --dl-bg: #0F172A; /* Deep Space Slate */
+    --dl-bg-card: rgba(30, 41, 59, 0.7); /* Glassy Slate */
+    --dl-bg-dark: #020617; /* Void Black */
+    --dl-bg-elevated: #1E293B; /* Popovers/Dropdowns */
+    --dl-bg-alt: #0B1120; /* Darker than main bg */
+    --dl-bg-chat: #0B1121; /* Dark Chat BG */
+    
+    --dl-text-primary: #F8FAFC; /* White text */
+    --dl-text-secondary: #CBD5E1; /* Light grey */
+    --dl-text-muted: #94A3B8; /* Muted grey */
+    --dl-text-subtle: #64748B; /* Darker grey */
+    
+    --dl-border: rgba(255, 255, 255, 0.08); /* Subtle glass border */
+    --dl-border-light: rgba(255, 255, 255, 0.04); /* Very subtle */
+
+    --dl-gradient-sidebar: linear-gradient(180deg, rgba(15, 23, 42, 0.95) 0%, rgba(2, 6, 23, 0.98) 100%);
+    --dl-gradient-body: linear-gradient(135deg, #0c0a1d 0%, #1a103c 20%, #0f172a 50%, #0a1628 80%, #050d1a 100%);
+    --dl-gradient-card-hover: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(168, 85, 247, 0.05) 100%);
+
+    --dl-primary-lighter: rgba(79, 70, 229, 0.15);
+    
+    --dl-shadow-card: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 4px 12px rgba(0, 0, 0, 0.2);
+    --dl-shadow-card-hover: 0 0 0 1px rgba(99, 102, 241, 0.3), 0 0 30px rgba(99, 102, 241, 0.15);
+}
+
+body.dark .header {
+    background: rgba(15, 23, 42, 0.85) !important;
+    border-bottom-color: #334155 !important;
+}
+
+body.dark .card {
+    background: #1E293B !important;
+    border-color: #334155 !important;
+}
+
+body.dark .sub-sidebar {
+    background: #1E293B !important;
+    border-color: #334155 !important;
+}
+
+body.dark .form-control,
+body.dark .form-select {
+    background: #0F172A !important;
+    border-color: #334155 !important;
+    color: #F1F5F9 !important;
+}
+
+body.dark .table thead th {
+    background: #1E293B !important;
+    color: #64748B !important;
+    border-bottom-color: #334155 !important;
+}
+
+body.dark .table tbody td {
+    border-bottom-color: rgba(51, 65, 85, 0.5) !important;
+}
+
+body.dark .dropdown-menu {
+    background: #1E293B !important;
+    border-color: #334155 !important;
+}
+
+body.dark .dropdown-item:hover {
+    background: rgba(79, 70, 229, 0.15) !important;
+}
+
+body.dark .main-wrapper {
+    background: #0F172A !important;
+}
+
+body.dark .modal-content {
+    background: #1E293B !important;
+    border-color: #334155 !important;
+}
+
+body.dark .bd-search h2,
+body.dark .sub-sidebar h2 {
+    background: linear-gradient(135deg, #F1F5F9 0%, #94A3B8 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+}
+
+/* ─────────────────────────────────────────────
+   26. UTILITY CLASSES (new, additive)
+   ───────────────────────────────────────────── */
+.dl-glass {
+    background: rgba(255, 255, 255, 0.7) !important;
+    backdrop-filter: blur(20px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+}
+
+.dl-gradient-text {
+    background: var(--dl-gradient-primary) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text !important;
+}
+
+.dl-hover-lift {
+    transition: all var(--dl-transition-slow) !important;
+}
+
+.dl-hover-lift:hover {
+    transform: translateY(-4px) !important;
+    box-shadow: var(--dl-shadow-lg) !important;
+}
+
+/* ─────────────────────────────────────────────
+   27. ACCOUNT MANAGER CARDS STYLE
+   ───────────────────────────────────────────── */
+.col-custom .card {
+    border-radius: var(--dl-radius-lg) !important;
+    transition: all var(--dl-transition-slow) !important;
+}
+
+.col-custom .card:hover {
+    transform: translateY(-4px) !important;
+    box-shadow: var(--dl-shadow-card-hover) !important;
+}
+
+/* ─────────────────────────────────────────────
+   28. SELECT2 OVERRIDES
+   ───────────────────────────────────────────── */
+.select2-container--default .select2-selection--single {
+    border-radius: var(--dl-radius-sm) !important;
+    border: 1.5px solid var(--dl-border) !important;
+    height: 42px !important;
+    padding: 6px 12px !important;
+}
+
+.select2-container--default .select2-selection--single:focus,
+.select2-container--default.select2-container--focus .select2-selection--single {
+    border-color: var(--dl-primary) !important;
+    box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.08) !important;
+}
+
+.select2-dropdown {
+    border-radius: var(--dl-radius-md) !important;
+    border: 1px solid var(--dl-border) !important;
+    box-shadow: var(--dl-shadow-lg) !important;
+}
+
+.select2-results__option--highlighted {
+    background: var(--dl-primary) !important;
+}
+
+/* ─────────────────────────────────────────────
+   29. NAV TABS — Modern Pill Style  
+   ───────────────────────────────────────────── */
+.nav-tabs {
+    border-bottom: 2px solid var(--dl-border-light) !important;
+}
+
+.nav-tabs .nav-link {
+    border: none !important;
+    border-bottom: 2px solid transparent !important;
+    color: var(--dl-text-muted) !important;
+    font-weight: 600 !important;
+    padding: 12px 20px !important;
+    transition: all var(--dl-transition-fast) !important;
+}
+
+.nav-tabs .nav-link:hover {
+    border-bottom-color: var(--dl-primary-light) !important;
+    color: var(--dl-primary) !important;
+}
+
+.nav-tabs .nav-link.active {
+    border-bottom-color: var(--dl-primary) !important;
+    color: var(--dl-primary) !important;
+    background: transparent !important;
+}
+
+.nav-pills .nav-link {
+    border-radius: var(--dl-radius-sm) !important;
+    font-weight: 500 !important;
+    padding: 8px 16px !important;
+    color: var(--dl-text-muted) !important;
+    transition: all var(--dl-transition-fast) !important;
+}
+
+.nav-pills .nav-link.active {
+    background: var(--dl-primary) !important;
+    color: #fff !important;
+    box-shadow: 0 4px 10px rgba(79, 70, 229, 0.25) !important;
+}
+
+/* ─────────────────────────────────────────────
+   30. TOOLTIP OVERRIDE
+   ───────────────────────────────────────────── */
+.tooltip-inner {
+    background: var(--dl-bg-dark) !important;
+    border-radius: 6px !important;
+    padding: 6px 12px !important;
+    font-size: 12px !important;
+    font-family: var(--dl-font) !important;
+    font-weight: 500 !important;
+    box-shadow: var(--dl-shadow-md) !important;
+}
+
+.bs-tooltip-auto[data-popper-placement^="top"] .tooltip-arrow::before,
+.bs-tooltip-top .tooltip-arrow::before {
+    border-top-color: var(--dl-bg-dark) !important;
+}
+
+/* ─────────────────────────────────────────────
+   31. SETTINGS PAGES — Enhanced Layout
+   ───────────────────────────────────────────── */
+.container.my-5 {
+    padding-top: 28px !important;
+    padding-bottom: 28px !important;
+    animation: dlSlideUp 0.35s ease-out;
+}
+
+/* Card-flush (settings cards) */
+.card.card-flush {
+    border: 1px solid var(--dl-border) !important;
+    border-radius: var(--dl-radius-lg) !important;
+    box-shadow: var(--dl-shadow-card) !important;
+    margin-bottom: 24px !important;
+}
+
+.card.card-flush .card-header {
+    background: transparent !important;
+    border-bottom: 1px solid var(--dl-border-light) !important;
+    padding: 20px 24px !important;
+}
+
+.card.card-flush .card-header h3 {
+    font-size: 16px !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.3px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+}
+
+.card.card-flush .card-header h3 i {
+    font-size: 18px !important;
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--dl-accent-lighter);
+    border-radius: var(--dl-radius-sm);
+    color: var(--dl-accent-dark) !important;
+}
+
+.card.card-flush .card-body {
+    padding: 24px !important;
+}
+
+/* Form-control-solid (settings inputs) */
+.form-control-solid,
+.form-control.form-control-solid {
+    background-color: var(--dl-border-light) !important;
+    border: 1.5px solid transparent !important;
+    border-radius: var(--dl-radius-sm) !important;
+    font-family: var(--dl-font) !important;
+    font-size: 14px !important;
+    padding: 10px 16px !important;
+    transition: all var(--dl-transition-base) !important;
+}
+
+.form-control-solid:focus,
+.form-control.form-control-solid:focus {
+    background-color: #fff !important;
+    border-color: var(--dl-primary) !important;
+    box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.08) !important;
+}
+
+/* Form spacing inside settings */
+.card-body .mb-4 {
+    margin-bottom: 20px !important;
+}
+
+.card-body .mb-3 {
+    margin-bottom: 16px !important;
+}
+
+.card-body .form-label {
+    font-size: 12.5px !important;
+    font-weight: 600 !important;
+    color: var(--dl-text-secondary) !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    margin-bottom: 6px !important;
+}
+
+/* Input groups in settings */
+.input-group {
+    border-radius: var(--dl-radius-sm) !important;
+    overflow: hidden !important;
+}
+
+.input-group .form-control {
+    border-top-right-radius: 0 !important;
+    border-bottom-right-radius: 0 !important;
+}
+
+.input-group .btn {
+    border-top-left-radius: 0 !important;
+    border-bottom-left-radius: 0 !important;
+    border-top-right-radius: var(--dl-radius-sm) !important;
+    border-bottom-right-radius: var(--dl-radius-sm) !important;
+}
+
+/* Save button in settings */
+.m-t-25 .btn-primary {
+    min-width: 160px;
+    padding: 12px 32px !important;
+    font-size: 14px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.3px;
+}
+
+/* Settings small text / help text */
+.card-body .small.text-danger,
+.card-body .small.text-muted {
+    font-size: 12px !important;
+    line-height: 1.5 !important;
+    margin-top: 4px !important;
+}
+
+/* ─────────────────────────────────────────────
+   32. SIDEBAR-SMALL STATE — Dark Gradient
+   ───────────────────────────────────────────── */
+body.sidebar-small .sidebar {
+    background: var(--dl-gradient-sidebar) !important;
+    border-right: none !important;
+}
+
+body.sidebar-small .sidebar .logo-small {
+    filter: brightness(0) invert(1) !important;
+    opacity: 0.9 !important;
+}
+
+body.sidebar-small .sidebar .nav-link {
+    justify-content: center !important;
+    margin: 2px 8px !important;
+}
+
+body.sidebar-small .sidebar .nav-link i {
+    filter: drop-shadow(0 0 8px currentColor) brightness(1.2) !important;
+}
+
+body.sidebar-small .sidebar .nav-link.active {
+    background: rgba(79, 70, 229, 0.2) !important;
+}
+
+body.sidebar-small .sidebar .nav-link.active i {
+    filter: drop-shadow(0 0 12px currentColor) brightness(1.4) !important;
+}
+
+body.sidebar-small .sidebar .nav-link:hover i {
+    filter: drop-shadow(0 0 14px currentColor) brightness(1.5) !important;
+    transform: scale(1.15);
+}
+
+body.sidebar-small .sidebar .nav-link::before {
+    display: none !important;
+}
+
+body.sidebar-small .sidebar .nav-line {
+    background: rgba(255, 255, 255, 0.06) !important;
+    margin: 8px 12px !important;
+}
+
+body.sidebar-small .sidebar .sidebar-footer {
+    border-top: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+/* ─────────────────────────────────────────────
+   33. SIDEBAR-OPEN STATE — Dark Gradient
+   ───────────────────────────────────────────── */
+body.sidebar-open .sidebar {
+    background: var(--dl-gradient-sidebar) !important;
+    border-right: none !important;
+}
+
+body.sidebar-open .sidebar .sidebar-nav .nav .nav-link span,
+body.sidebar-open .sidebar .sidebar-footer .nav-link span {
+    color: rgba(255, 255, 255, 0.6) !important;
+}
+
+body.sidebar-open .sidebar .nav-link.active span {
+    color: #fff !important;
+}
+
+body.sidebar-open .sidebar .nav-link:hover span {
+    color: #fff !important;
+}
+
+/* ─────────────────────────────────────────────
+   34. ACCOUNT MANAGER — Premium Styling
+   ───────────────────────────────────────────── */
+.account_manager .am-widget {
+    border: 1px solid var(--dl-border) !important;
+    border-radius: var(--dl-radius-md) !important;
+    transition: all var(--dl-transition-base) !important;
+    background: var(--dl-bg-card) !important;
+}
+
+.account_manager .am-widget:hover {
+    border-color: rgba(79, 70, 229, 0.2) !important;
+    box-shadow: var(--dl-shadow-sm) !important;
+}
+
+.account_manager .am-widget .remove {
+    border-left: 1px solid var(--dl-border) !important;
+    transition: all var(--dl-transition-fast) !important;
+}
+
+.account_manager .am-widget .remove:hover {
+    background: #FEF2F2 !important;
+    color: #EF4444 !important;
+}
+
+.account_manager .am-choice-box:hover .am-selected-box,
+.account_manager .am-choice-box:hover .am-list-account {
+    box-shadow: var(--dl-shadow-lg) !important;
+}
+
+.account_manager .am-choice-box .am-list-account {
+    border-radius: var(--dl-radius-md) !important;
+    border: 1px solid var(--dl-border) !important;
+    background: var(--dl-bg-card) !important;
+    overflow: hidden !important;
+}
+
+.account_manager .am-choice-box .am-selected-box .am-selected-list .am-selected-item:hover {
+    border-color: var(--dl-primary) !important;
+}
+
+/* ─────────────────────────────────────────────
+   35. WHATSAPP ACCOUNT CARDS
+   ───────────────────────────────────────────── */
+.col-custom .card .card-body {
+    padding: 20px !important;
+}
+
+.col-custom .card:hover {
+    border-color: rgba(79, 70, 229, 0.15) !important;
+}
+
+/* Status badges in WhatsApp cards */
+.col-custom .badge {
+    font-size: 10px !important;
+    padding: 4px 8px !important;
+}
+
+/* ─────────────────────────────────────────────
+   36. FILE MANAGER ENHANCEMENTS
+   ───────────────────────────────────────────── */
+.fm-sidebar {
+    border-right: 1px solid var(--dl-border) !important;
+}
+
+.fm-item {
+    border-radius: var(--dl-radius-sm) !important;
+    transition: all var(--dl-transition-fast) !important;
+}
+
+.fm-item:hover {
+    background: var(--dl-primary-lighter) !important;
+}
+
+/* ─────────────────────────────────────────────
+   37. LIVECHAT IMPROVEMENTS
+   ───────────────────────────────────────────── */
+.chat-message {
+    border-radius: var(--dl-radius-md) !important;
+    transition: all var(--dl-transition-fast) !important;
+}
+
+.chat-bubble-sent {
+    background: var(--dl-primary) !important;
+    color: #fff !important;
+    border-radius: var(--dl-radius-md) var(--dl-radius-md) 4px var(--dl-radius-md) !important;
+}
+
+.chat-bubble-received {
+    background: var(--dl-border-light) !important;
+    border-radius: var(--dl-radius-md) var(--dl-radius-md) var(--dl-radius-md) 4px !important;
+}
+
+/* ─────────────────────────────────────────────
+   38. CRM KANBAN IMPROVEMENTS
+   ───────────────────────────────────────────── */
+.kanban-board .kanban-column {
+    border-radius: var(--dl-radius-md) !important;
+    background: var(--dl-border-light) !important;
+}
+
+.kanban-item {
+    border-radius: var(--dl-radius-sm) !important;
+    border: 1px solid var(--dl-border) !important;
+    background: var(--dl-bg-card) !important;
+    box-shadow: var(--dl-shadow-xs) !important;
+    transition: all var(--dl-transition-fast) !important;
+}
+
+.kanban-item:hover {
+    box-shadow: var(--dl-shadow-md) !important;
+    transform: translateY(-2px) !important;
+}
+
+/* ─────────────────────────────────────────────
+   39. EMPTY STATE PAGES — Better Styling
+   ───────────────────────────────────────────── */
+.mw-400 {
+    max-width: 400px !important;
+}
+
+.mw-400 .text-center {
+    padding: 40px 24px !important;
+}
+
+.mw-400 img {
+    opacity: 0.5;
+    transition: all var(--dl-transition-slow) !important;
+}
+
+.mw-400 img:hover {
+    opacity: 0.7;
+    transform: scale(1.02);
+}
+
+.mw-400 .btn {
+    margin-top: 20px !important;
+}
+
+/* ─────────────────────────────────────────────
+   40. GENERAL UI POLISH
+   ───────────────────────────────────────────── */
+
+/* Menu section headers */
+.menu-section {
+    font-family: var(--dl-font) !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.8px !important;
+    color: var(--dl-text-subtle) !important;
+    padding: 8px 0 4px !important;
+}
+
+/* Sub-header (below main header) */
+.sub-header {
+    background: var(--dl-bg-card) !important;
+    border-bottom: 1px solid var(--dl-border) !important;
+}
+
+/* Action forms wrapper */
+.actionForm {
+    background: var(--dl-bg) !important;
+}
+
+/* Image previews */
+.image-preview,
+img.mw-100 {
+    border-radius: var(--dl-radius-md) !important;
+}
+
+/* Hover transitions for all interactive elements */
+a {
+    transition: color var(--dl-transition-fast) !important;
+}
+
+/* Focus outlines (accessibility + aesthetics) */
+*:focus-visible {
+    outline: 2px solid var(--dl-primary) !important;
+    outline-offset: 2px !important;
+    border-radius: 4px !important;
+}
+
+/* Card header border bottom */
+.card-header {
+    border-bottom: 1px solid var(--dl-border-light) !important;
+}
+
+/* Card footer */
+.card-footer {
+    border-top: 1px solid var(--dl-border-light) !important;
+    background: transparent !important;
+}
+
+/* fw-bolder override for consistency */
+.fw-bolder {
+    font-weight: 700 !important;
+}
+
+/* Smooth transitions on hover for sidebar popover links */
+.sidebar-popover .webui-popover .menu-link {
+    font-family: var(--dl-font) !important;
+    font-size: 13px !important;
+    padding: 6px 8px !important;
+    border-radius: 6px !important;
+    transition: all var(--dl-transition-fast) !important;
+}
+
+.sidebar-popover .webui-popover .menu-link:hover {
+    background: var(--dl-primary-lighter) !important;
+    color: var(--dl-primary) !important;
+}
+
+/* Dark mode additional overrides */
+body.dark .card.card-flush {
+    background: #1E293B !important;
+    border-color: #334155 !important;
+}
+
+body.dark .card.card-flush .card-header {
+    border-bottom-color: rgba(51, 65, 85, 0.5) !important;
+}
+
+body.dark .card.card-flush .card-header h3 i {
+    background: rgba(34, 197, 94, 0.15) !important;
+}
+
+body.dark .form-control-solid,
+body.dark .form-control.form-control-solid {
+    background: #0F172A !important;
+    border-color: transparent !important;
+    color: #F1F5F9 !important;
+}
+
+body.dark .form-control-solid:focus,
+body.dark .form-control.form-control-solid:focus {
+    background: #1E293B !important;
+    border-color: var(--dl-primary) !important;
+}
+
+body.dark .account_manager .am-widget {
+    background: #1E293B !important;
+    border-color: #334155 !important;
+}
+
+body.dark .mw-400 img {
+    filter: brightness(0.8) !important;
+}
+
+body.dark .actionForm {
+    background: #0F172A !important;
+}
+
+/* ─────────────────────────────────────────────
+   41. PRINT STYLES (clean printing)
+   ───────────────────────────────────────────── */
+@media print {
+    .sidebar-wrapper,
+    .header,
+    .sub-sidebar,
+    .btn-open-sidebar {
+        display: none !important;
+    }
+    
+    .main-wrapper {
+        margin: 0 !important;
+        height: auto !important;
+    }
+    
+    .card {
+        box-shadow: none !important;
+        border: 1px solid #ddd !important;
+    }
+}
+
+/* ─────────────────────────────────────────────
+   42. AI THEME — ANIMATIONS & GLASSMORPHISM
+   ───────────────────────────────────────────── */
+
+/* Animated Floating Icons */
+@keyframes dlFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); filter: drop-shadow(0 4px 6px rgba(99, 102, 241, 0.4)); }
+}
+
+@keyframes dlPulse {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.05); opacity: 0.8; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes dlNeonGlow {
+    0%, 100% { text-shadow: 0 0 5px var(--dl-primary), 0 0 10px var(--dl-secondary); }
+    50% { text-shadow: 0 0 20px var(--dl-primary), 0 0 30px var(--dl-secondary); }
+}
+
+/* Apply animations to icons */
+.card i[class*="fs-"], 
+.widget-icon i,
+.am-widget .icon i {
+    display: inline-block;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.card:hover i[class*="fs-"],
+.widget-icon:hover i {
+    animation: dlFloat 3s ease-in-out infinite;
+    color: var(--dl-accent-light) !important;
+    text-shadow: 0 0 15px var(--dl-accent);
+}
+
+/* Sidebar Icons */
+.sidebar .nav-link i {
+    transition: all 0.3s ease;
+}
+
+.sidebar .nav-link:hover i {
+    transform: scale(1.15) rotate(5deg);
+    filter: drop-shadow(0 0 14px currentColor) brightness(1.5) !important;
+}
+
+.sidebar .nav-link.active i {
+    animation: dlNeonGlow 2s infinite alternate;
+}
+
+/* Glassmorphism Overrides */
+.sidebar {
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.9) 0%, rgba(2, 6, 23, 0.95) 100%) !important;
+    backdrop-filter: blur(24px) !important;
+    -webkit-backdrop-filter: blur(24px) !important;
+    border-right: 1px solid rgba(99, 102, 241, 0.25) !important; /* Neon Purple Border */
+    box-shadow: 10px 0 40px rgba(0, 0, 0, 0.3) !important;
+}
+
+.header {
+    background: rgba(15, 23, 42, 0.6) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border-bottom: 1px solid var(--dl-border-light) !important;
+}
+
+.card {
+    background: rgba(30, 41, 59, 0.5) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    position: relative;
+}
+
+.card:hover {
+    background: rgba(30, 41, 59, 0.7) !important;
+    border-color: rgba(99, 102, 241, 0.4) !important;
+    box-shadow: 0 0 30px rgba(99, 102, 241, 0.12), 0 0 60px rgba(99, 102, 241, 0.06) !important;
+}
+
+/* ─────────────────────────────────────────────
+   43. TEXT READABILITY — Maximum Contrast
+   ───────────────────────────────────────────── */
+.text-dark { color: var(--dl-text-primary) !important; }
+.text-muted { color: var(--dl-text-muted) !important; }
+h1, h2, h3, h4, h5, h6 { color: var(--dl-text-primary) !important; }
+p { color: var(--dl-text-secondary) !important; }
+.small, small { color: var(--dl-text-muted) !important; }
+.card-title { color: var(--dl-text-primary) !important; font-weight: 700 !important; }
+.card-text { color: var(--dl-text-muted) !important; }
+a:not(.btn) { color: var(--dl-primary) !important; }
+a:not(.btn):hover { color: var(--dl-primary-light) !important; }
+.fw-bold, .fw-bolder, strong, b { color: var(--dl-text-primary) !important; }
+
+/* WhatsApp Report heading bar — was invisible */
+.bg-dark, [class*="bg-dark"] {
+    background: rgba(30, 41, 59, 0.6) !important;
+    color: #e2e8f0 !important;
+}
+
+/* ─────────────────────────────────────────────
+   44. ICON CONTAINERS — Neon Glow Effect
+   ───────────────────────────────────────────── */
+/* Round icon containers in dashboard cards */
+.rounded-circle.p-3 {
+    position: relative;
+    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+    border: 1px solid var(--dl-border-light) !important;
+}
+
+.rounded-circle.p-3::after {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    background: conic-gradient(
+        from 0deg,
+        rgba(99, 102, 241, 0.3),
+        rgba(217, 70, 239, 0.3),
+        rgba(14, 165, 233, 0.3),
+        rgba(99, 102, 241, 0.3)
+    );
+    z-index: -1;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    filter: blur(6px);
+}
+
+.card:hover .rounded-circle.p-3::after {
+    opacity: 1;
+    animation: dlIconRing 3s linear infinite;
+}
+
+.card:hover .rounded-circle.p-3 {
+    transform: scale(1.08);
+    border-color: rgba(99, 102, 241, 0.3) !important;
+    box-shadow: 0 0 20px rgba(99, 102, 241, 0.15);
+}
+
+@keyframes dlIconRing {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Icon colors enhanced — brighter in dark mode */
+.card i.fa-2x,
+.card i.fad,
+.card i.fas,
+.card i.fab,
+.card i[class*="fs-"] {
+    filter: brightness(1.3) saturate(1.4) !important;
+    transition: all 0.3s ease !important;
+}
+
+.card:hover i.fa-2x,
+.card:hover i.fad,
+.card:hover i.fas,
+.card:hover i.fab,
+.card:hover i[class*="fs-"] {
+    filter: brightness(1.5) saturate(1.6) drop-shadow(0 0 8px currentColor) !important;
+    transform: scale(1.1);
+}
+
+/* Feature cards in the middle row — icon grid */
+.container .row .col-md-3 .card .card-body .text-center img,
+.container .row .col-md-3 .card .card-body i {
+    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.container .row .col-md-3 .card:hover .card-body i {
+    transform: translateY(-4px) scale(1.15);
+    filter: brightness(1.5) saturate(1.6) drop-shadow(0 0 12px currentColor) !important;
+}
+
+/* Label text under icons — make visible */
+.container .row .col-md-3 .card .text-center .text-truncate,
+.container .row .col-md-3 .card .text-center small {
+    color: #cbd5e1 !important;
+    font-weight: 500 !important;
+}
+
+/* ─────────────────────────────────────────────
+   45. SIDEBAR TEXT & ICONS — Brighter
+   ───────────────────────────────────────────── */
+.sidebar .nav-link span {
+    color: rgba(255, 255, 255, 0.92) !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.2px !important;
+}
+
+.sidebar .nav-link:hover span {
+    color: #fff !important;
+}
+
+.sidebar .nav-link.active span {
+    color: #fff !important;
+    font-weight: 600 !important;
+}
+
+.sidebar .nav-link i {
+    filter: drop-shadow(0 0 8px currentColor) brightness(1.2) !important;
+    font-size: 20px !important;
+}
+
+.sidebar .nav-link:hover i {
+    filter: drop-shadow(0 0 14px currentColor) brightness(1.5) !important;
+    transform: scale(1.15);
+}
+
+.sidebar .nav-link.active i {
+    filter: drop-shadow(0 0 12px currentColor) brightness(1.4) !important;
+}
+
+/* DelyntroBot logo text */
+.sidebar .logo-text,
+.sidebar .sidebar-header span {
+    color: #f1f5f9 !important;
+    font-weight: 700 !important;
+}
+
+/* ─────────────────────────────────────────────
+   46. MAIN WRAPPER — Transparent for gradient
+   ───────────────────────────────────────────── */
+.main-wrapper {
+    background: transparent !important;
+}
+
+.content-wrapper,
+.main-content {
+    background: transparent !important;
+}
+
+/* ─────────────────────────────────────────────
+   47. BUTTONS — Neon Gradient Enhancement
+   ───────────────────────────────────────────── */
+.btn-primary {
+    background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%) !important;
+    border: none !important;
+    color: #fff !important;
+    font-weight: 600 !important;
+    box-shadow: 0 4px 15px rgba(99, 102, 241, 0.25) !important;
+    transition: all 0.3s ease !important;
+}
+
+.btn-primary:hover {
+    background: linear-gradient(135deg, #818CF8 0%, #A78BFA 100%) !important;
+    box-shadow: 0 6px 25px rgba(99, 102, 241, 0.4) !important;
+    transform: translateY(-1px);
+}
+
+.btn-success {
+    background: linear-gradient(135deg, #059669 0%, #10B981 100%) !important;
+    border: none !important;
+    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.25) !important;
+}
+
+.btn-success:hover {
+    box-shadow: 0 6px 25px rgba(16, 185, 129, 0.4) !important;
+}
+
+/* ─────────────────────────────────────────────
+   48. INPUT FIELDS — Dark Glass (Scoped)
+   ───────────────────────────────────────────── */
+body.dark .form-control, body.dark .form-select {
+    background-color: rgba(15, 23, 42, 0.6) !important;
+    border-color: rgba(255, 255, 255, 0.12) !important;
+    color: #f8fafc !important;
+    transition: all 0.2s ease !important;
+}
+
+body.dark .form-control::placeholder {
+    color: #64748b !important;
+}
+
+body.dark .form-control:focus, body.dark .form-select:focus {
+    background-color: rgba(15, 23, 42, 0.8) !important;
+    border-color: var(--dl-primary) !important;
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15), 0 0 20px rgba(99, 102, 241, 0.1) !important;
+}
+
+/* ─────────────────────────────────────────────
+   49. SCROLLBAR — Neon Accent (Scoped)
+   ───────────────────────────────────────────── */
+body.dark ::-webkit-scrollbar { width: 6px; }
+body.dark ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.5); }
+body.dark ::-webkit-scrollbar-thumb { background: #334155; border-radius: 6px; }
+body.dark ::-webkit-scrollbar-thumb:hover { background: var(--dl-primary); }
+
+/* ─────────────────────────────────────────────
+   50. LOADING OVERLAY — Dark Glass (Scoped)
+   ───────────────────────────────────────────── */
+body.dark .loading {
+    background: rgba(15, 23, 42, 0.85) !important;
+    backdrop-filter: blur(12px) !important;
+}
+
+/* Table dark mode */
+body.dark .table thead th {
+    background: rgba(30, 41, 59, 0.6) !important;
+    color: #94a3b8 !important;
+    border-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+body.dark .table tbody td {
+    border-color: rgba(255, 255, 255, 0.04) !important;
+    color: #cbd5e1 !important;
+}
+
+body.dark .table tbody tr:hover td {
+    background: rgba(99, 102, 241, 0.05) !important;
+}
+
+/* Dropdown dark */
+body.dark .dropdown-menu {
+    background: rgba(30, 41, 59, 0.95) !important;
+    backdrop-filter: blur(20px) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+body.dark .dropdown-item {
+    color: #cbd5e1 !important;
+}
+
+body.dark .dropdown-item:hover {
+    background: rgba(99, 102, 241, 0.15) !important;
+    color: #fff !important;
+}
+
+/* Modal dark */
+body.dark .modal-content {
+    background: rgba(30, 41, 59, 0.95) !important;
+    backdrop-filter: blur(20px) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+body.dark .modal-header, body.dark .modal-footer {
+    border-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+/* ─────────────────────────────────────────────
+   51. BOOTSTRAP UTILITY DARK OVERRIDES
+   ───────────────────────────────────────────── */
+
+/* bg-white override for dark theme */
+body.dark .bg-white {
+    background: rgba(30, 41, 59, 0.5) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Text gray utilities — make white/light */
+body.dark .text-gray-900 { color: #f1f5f9 !important; }
+body.dark .text-gray-800 { color: #e2e8f0 !important; }
+body.dark .text-gray-700 { color: #cbd5e1 !important; }
+body.dark .text-gray-600 { color: #94a3b8 !important; }
+body.dark .text-gray-500 { color: #94a3b8 !important; }
+body.dark .text-gray-400 { color: #64748b !important; }
+body.dark .text-gray-300 { color: #64748b !important; }
+body.dark .text-gray-200 { color: #475569 !important; }
+body.dark .text-gray-100 { color: #94a3b8 !important; }
+
+/* bg-light utility */
+body.dark .bg-light {
+    background: rgba(30, 41, 59, 0.4) !important;
+}
+
+/* bg-light-success icon containers */
+body.dark .bg-light-success {
+    background: rgba(34, 197, 94, 0.15) !important;
+    color: #4ade80 !important;
+}
+
+body.dark .bg-light-primary {
+    background: rgba(99, 102, 241, 0.15) !important;
+    color: #818cf8 !important;
+}
+
+body.dark .bg-light-danger {
+    background: rgba(239, 68, 68, 0.15) !important;
+    color: #fca5a5 !important;
+}
+
+body.dark .bg-light-warning {
+    background: rgba(245, 158, 11, 0.15) !important;
+    color: #fcd34d !important;
+}
+
+body.dark .bg-light-info {
+    background: rgba(14, 165, 233, 0.15) !important;
+    color: #38bdf8 !important;
+}
+
+/* bg-gray-900 card (WhatsApp report cards use this) */
+body.dark .bg-gray-900 {
+    background: rgba(15, 23, 42, 0.6) !important;
+}
+
+/* Table striped — dark rows */
+body.dark .table-striped > tbody > tr:nth-of-type(odd) > * {
+    --bs-table-accent-bg: rgba(30, 41, 59, 0.3) !important;
+    color: #cbd5e1 !important;
+}
+
+body.dark .table-bordered {
+    border-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+body.dark .table-bordered > :not(caption) > * > * {
+    border-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+/* border utility in dark mode */
+body.dark .border {
+    border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Text colors for statistics */
+body.dark .text-success { color: #4ade80 !important; }
+body.dark .text-primary { color: #818cf8 !important; }
+body.dark .text-danger { color: #f87171 !important; }
+body.dark .text-warning { color: #fbbf24 !important; }
+body.dark .text-info { color: #38bdf8 !important; }
+body.dark .text-white { color: #f8fafc !important; }
+
+/* ─────────────────────────────────────────────
+   52. FEATURE ICON CARDS (middle row)
+   ───────────────────────────────────────────── */
+/* These are the icon grid cards - Account mgr, File mgr, etc. */
+.card .card-body .d-flex.overflow-auto .text-center .card,
+.card .card-body .text-center .card {
+    background: rgba(30, 41, 59, 0.6) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Ensure all nested cards also follow the dark theme */
+.card .card {
+    background: rgba(30, 41, 59, 0.4) !important;
+    border-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+.card .card:hover {
+    background: rgba(30, 41, 59, 0.6) !important;
+    border-color: rgba(99, 102, 241, 0.3) !important;
+}
+
+/* ─────────────────────────────────────────────
+   53. BG-GRAY UTILITY DARK OVERRIDES
+   ───────────────────────────────────────────── */
+
+/* bg-gray-100 — used on feature icon links & "View plan" button */
+.bg-gray-100 {
+    background: rgba(30, 41, 59, 0.5) !important;
+    color: #e2e8f0 !important;
+}
+
+.bg-gray-200 {
+    background: rgba(30, 41, 59, 0.4) !important;
+    color: #e2e8f0 !important;
+}
+
+.bg-gray-300 {
+    background: rgba(30, 41, 59, 0.35) !important;
+    color: #e2e8f0 !important;
+}
+
+/* Feature icon links in the middle row */
+a.bg-gray-100,
+a.d-block.bg-gray-100 {
+    background: rgba(30, 41, 59, 0.5) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    color: #cbd5e1 !important;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+}
+
+a.bg-gray-100:hover,
+a.d-block.bg-gray-100:hover {
+    background: rgba(99, 102, 241, 0.15) !important;
+    border-color: rgba(99, 102, 241, 0.3) !important;
+    color: #fff !important;
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(99, 102, 241, 0.15) !important;
+}
+
+/* "View plan" button override */
+.btn.bg-gray-100 {
+    background: rgba(99, 102, 241, 0.2) !important;
+    color: #c7d2fe !important;
+    border: 1px solid rgba(99, 102, 241, 0.3) !important;
+}
+
+.btn.bg-gray-100:hover {
+    background: rgba(99, 102, 241, 0.35) !important;
+    color: #fff !important;
+    box-shadow: 0 4px 15px rgba(99, 102, 241, 0.2) !important;
+}
+
+/* Input group text in search boxes */
+.input-group-text.bg-gray-100,
+.input-group-text.bg-light {
+    background: rgba(30, 41, 59, 0.5) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    color: #94a3b8 !important;
+}
+
+/* Form control solid variant */
+.form-control-solid,
+.form-control.bg-light {
+    background: rgba(15, 23, 42, 0.5) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    color: #f1f5f9 !important;
+}
+
+.form-control-solid:focus,
+.form-control.bg-light:focus {
+    background: rgba(15, 23, 42, 0.7) !important;
+    border-color: rgba(99, 102, 241, 0.4) !important;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15) !important;
+}
+
+/* Feature icon images inside the cards */
+a.bg-gray-100 img,
+a.d-block.bg-gray-100 img {
+    filter: brightness(1.1) !important;
+    transition: all 0.3s ease !important;
+}
+
+a.bg-gray-100:hover img,
+a.d-block.bg-gray-100:hover img {
+    filter: brightness(1.3) drop-shadow(0 0 8px rgba(99, 102, 241, 0.3)) !important;
+    transform: scale(1.05);
+}
+
+/* Text under feature icons */
+.text-over-all {
+    color: #cbd5e1 !important;
+}
+
+.text-over-all:hover {
+    color: #f1f5f9 !important;
+}
+
+/* Alert dark mode */
+.alert-danger {
+    background: rgba(239, 68, 68, 0.15) !important;
+    border-color: rgba(239, 68, 68, 0.25) !important;
+    color: #fca5a5 !important;
+}
+
+.alert-warning {
+    background: rgba(245, 158, 11, 0.15) !important;
+    border-color: rgba(245, 158, 11, 0.25) !important;
+    color: #fcd34d !important;
+}
+
+.alert-success {
+    background: rgba(34, 197, 94, 0.15) !important;
+    border-color: rgba(34, 197, 94, 0.25) !important;
+    color: #86efac !important;
+}
+
+.alert-info {
+    background: rgba(14, 165, 233, 0.15) !important;
+    border-color: rgba(14, 165, 233, 0.25) !important;
+    color: #7dd3fc !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ██  LIGHT THEME — body.dl-light                                ██
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Body & Background ── */
+body.dl-light {
+    background: linear-gradient(135deg, #f0f4ff 0%, #e8eeff 25%, #f8fafc 50%, #eef2ff 75%, #f1f5f9 100%) !important;
+    color: #1e293b !important;
+}
+
+body.dl-light::before {
+    background:
+        radial-gradient(ellipse 600px 400px at 20% 30%, rgba(99, 102, 241, 0.04) 0%, transparent 70%),
+        radial-gradient(ellipse 500px 500px at 80% 20%, rgba(217, 70, 239, 0.03) 0%, transparent 70%),
+        radial-gradient(ellipse 400px 300px at 60% 80%, rgba(14, 165, 233, 0.03) 0%, transparent 70%) !important;
+}
+
+/* ── Main Wrapper ── */
+body.dl-light .main-wrapper {
+    background: transparent !important;
+}
+
+body.dl-light .content-wrapper,
+body.dl-light .main-content {
+    background: transparent !important;
+}
+
+/* ── Header ── */
+body.dl-light .header {
+    background: rgba(255, 255, 255, 0.85) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06) !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+}
+
+/* ── Sidebar ── */
+body.dl-light .sidebar {
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+    backdrop-filter: none !important;
+    border-right: 1px solid rgba(0, 0, 0, 0.06) !important;
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.04) !important;
+}
+
+/* Logo area in light mode */
+body.dl-light .sidebar .sidebar-logo {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06) !important;
+}
+
+body.dl-light .sidebar .sidebar-logo .logo-big h2 {
+    color: #1e293b !important;
+}
+
+body.dl-light .sidebar .sidebar-logo .logo-big h2 .text-primary,
+body.dl-light .sidebar .sidebar-logo .logo-big .text-primary {
+    color: var(--dl-primary) !important;
+    -webkit-text-fill-color: var(--dl-primary) !important;
+}
+
+/* Nav links — match the specificity of the global selectors */
+body.dl-light .sidebar .sidebar-nav .nav .nav-link,
+body.dl-light .sidebar .sidebar-footer .nav-link {
+    color: #475569 !important;
+}
+
+/* DO NOT force icon color — let inline styles from PHP show their colors */
+body.dl-light .sidebar .sidebar-nav .nav .nav-link i,
+body.dl-light .sidebar .sidebar-footer .nav-link i {
+    text-shadow: none !important;
+    filter: none !important;
+}
+
+body.dl-light .sidebar .sidebar-nav .nav .nav-link span,
+body.dl-light .sidebar .sidebar-footer .nav-link span {
+    color: #475569 !important;
+}
+
+/* Hover state — NO background on hover, just darken text */
+body.dl-light .sidebar .sidebar-nav .nav .nav-link:hover,
+body.dl-light .sidebar .sidebar-footer .nav-link:hover {
+    background: transparent !important;
+    color: #1e293b !important;
+}
+
+body.dl-light .sidebar .sidebar-nav .nav .nav-link:hover i,
+body.dl-light .sidebar .sidebar-footer .nav-link:hover i {
+    text-shadow: none !important;
+    filter: none !important;
+}
+
+body.dl-light .sidebar .sidebar-nav .nav .nav-link:hover span,
+body.dl-light .sidebar .sidebar-footer .nav-link:hover span {
+    color: #1e293b !important;
+}
+
+/* Hover glow bar — use primary color in light mode */
+body.dl-light .sidebar .sidebar-nav .nav .nav-link::before {
+    background: var(--dl-primary) !important;
+}
+
+/* Active state */
+body.dl-light .sidebar .sidebar-nav .nav .nav-link.active,
+body.dl-light .sidebar .sidebar-footer .nav-link.active {
+    background: rgba(99, 102, 241, 0.08) !important;
+    color: var(--dl-primary) !important;
+    box-shadow: none !important;
+}
+
+body.dl-light .sidebar .sidebar-nav .nav .nav-link.active i,
+body.dl-light .sidebar .sidebar-footer .nav-link.active i {
+    text-shadow: none !important;
+    filter: none !important;
+}
+
+body.dl-light .sidebar .sidebar-nav .nav .nav-link.active span,
+body.dl-light .sidebar .sidebar-footer .nav-link.active span {
+    color: var(--dl-primary) !important;
+    font-weight: 600 !important;
+}
+
+body.dl-light .sidebar .sidebar-nav .nav .nav-link.active::before {
+    background: var(--dl-primary) !important;
+}
+
+/* Nav separator lines */
+body.dl-light .sidebar .nav-line {
+    background: rgba(0, 0, 0, 0.06) !important;
+}
+
+/* Sub-menu accordion */
+body.dl-light .sidebar .menu-sub.menu-sub-accordion {
+    background: rgba(99, 102, 241, 0.04) !important;
+}
+
+/* FIX: Ensure sidebar dropdown menus are visible when toggled open (both themes) */
+.sidebar .menu-sub.menu-sub-accordion.show,
+.sidebar .nav-item.menu-open > .menu-sub.menu-sub-accordion {
+    display: block !important;
+    max-height: none !important;
+    height: auto !important;
+    opacity: 1 !important;
+    overflow: visible !important;
+    visibility: visible !important;
+}
+
+/* Light mode specific overrides */
+body.dl-light .sidebar .menu-sub.menu-sub-accordion.show,
+body.dl-light .sidebar .nav-item.menu-open > .menu-sub.menu-sub-accordion {
+    display: block !important;
+    max-height: none !important;
+    height: auto !important;
+    opacity: 1 !important;
+    overflow: visible !important;
+    visibility: visible !important;
+}
+
+body.dl-light .sidebar .menu-sub .menu-link {
+    color: #64748b !important;
+}
+
+body.dl-light .sidebar .menu-sub .menu-link:hover {
+    color: var(--dl-primary) !important;
+    background: rgba(99, 102, 241, 0.06) !important;
+}
+
+body.dl-light .sidebar .menu-sub .menu-link.text-primary {
+    color: var(--dl-primary) !important;
+    -webkit-text-fill-color: var(--dl-primary) !important;
+}
+
+/* Sidebar footer */
+body.dl-light .sidebar .sidebar-footer {
+    border-top: 1px solid rgba(0, 0, 0, 0.06) !important;
+}
+
+body.dl-light .sidebar .menu-separator {
+    background: rgba(0, 0, 0, 0.06) !important;
+}
+
+/* Logo text */
+body.dl-light .sidebar .logo-text,
+body.dl-light .sidebar .sidebar-header span {
+    color: #1e293b !important;
+}
+
+/* ── Sub-Sidebar ── */
+body.dl-light .sub-sidebar {
+    background: #fff !important;
+    backdrop-filter: none !important;
+    border-right: 1px solid rgba(0, 0, 0, 0.06) !important;
+    box-shadow: 1px 0 4px rgba(0, 0, 0, 0.02) !important;
+}
+
+body.dl-light .sub-sidebar h2 {
+    color: #1e293b !important;
+    text-shadow: none !important;
+}
+
+body.dl-light .sp-menu .menu-item .menu-link {
+    color: #64748b !important;
+    border-color: transparent !important;
+}
+
+body.dl-light .sp-menu .menu-item .menu-link:hover {
+    background: rgba(99, 102, 241, 0.08) !important;
+    color: var(--dl-primary) !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+}
+
+body.dl-light .sp-menu .menu-item .menu-link.active,
+body.dl-light .sp-menu .menu-item.active .menu-link {
+    background: rgba(99, 102, 241, 0.1) !important;
+    color: var(--dl-primary) !important;
+    border-left-color: var(--dl-primary) !important;
+    box-shadow: none !important;
+}
+
+/* ── Cards ── */
+body.dl-light .card {
+    background: rgba(255, 255, 255, 0.9) !important;
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+    border: 1px solid rgba(0, 0, 0, 0.06) !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+}
+
+body.dl-light .card:hover {
+    background: #fff !important;
+    border-color: rgba(99, 102, 241, 0.2) !important;
+    box-shadow: 0 4px 15px rgba(99, 102, 241, 0.08) !important;
+}
+
+body.dl-light .card .card {
+    background: rgba(255, 255, 255, 0.8) !important;
+    border-color: rgba(0, 0, 0, 0.04) !important;
+}
+
+/* ── Typography ── */
+body.dl-light h1, body.dl-light h2, body.dl-light h3,
+body.dl-light h4, body.dl-light h5, body.dl-light h6 {
+    color: #1e293b !important;
+}
+
+body.dl-light p { color: #475569 !important; }
+
+body.dl-light .text-dark { color: #1e293b !important; }
+body.dl-light .text-muted { color: #64748b !important; }
+body.dl-light .card-title { color: #1e293b !important; }
+body.dl-light .card-text { color: #64748b !important; }
+body.dl-light .small, body.dl-light small { color: #64748b !important; }
+body.dl-light a:not(.btn) { color: var(--dl-primary) !important; }
+body.dl-light a:not(.btn):hover { color: var(--dl-primary-light) !important; }
+body.dl-light .fw-bold, body.dl-light .fw-bolder,
+body.dl-light strong, body.dl-light b { color: #1e293b !important; }
+
+/* ── Gradient Texts ── */
+body.dl-light .bd-search h2,
+body.dl-light .sub-sidebar h2 {
+    background: linear-gradient(135deg, #1e293b 0%, #475569 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text !important;
+}
+
+/* ── Text Gray Utilities ── */
+body.dl-light .text-gray-900 { color: #111827 !important; }
+body.dl-light .text-gray-800 { color: #1f2937 !important; }
+body.dl-light .text-gray-700 { color: #374151 !important; }
+body.dl-light .text-gray-600 { color: #4b5563 !important; }
+body.dl-light .text-gray-500 { color: #6b7280 !important; }
+body.dl-light .text-gray-400 { color: #9ca3af !important; }
+body.dl-light .text-gray-100 { color: #6b7280 !important; }
+
+/* ── Status Text Colors ── */
+body.dl-light .text-success { color: #059669 !important; }
+body.dl-light .text-primary { color: #4f46e5 !important; }
+body.dl-light .text-danger { color: #dc2626 !important; }
+body.dl-light .text-warning { color: #d97706 !important; }
+body.dl-light .text-info { color: #0284c7 !important; }
+body.dl-light .text-white { color: #1e293b !important; }
+
+/* ── Background Utilities ── */
+body.dl-light .bg-white {
+    background: #fff !important;
+    backdrop-filter: none !important;
+    border-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+body.dl-light .bg-light { background: #f8fafc !important; }
+
+body.dl-light .bg-gray-100 {
+    background: #f1f5f9 !important;
+    color: #374151 !important;
+}
+
+body.dl-light .bg-gray-200 { background: #e2e8f0 !important; color: #1e293b !important; }
+body.dl-light .bg-gray-300 { background: #cbd5e1 !important; color: #1e293b !important; }
+body.dl-light .bg-gray-900 { background: #1e293b !important; }
+
+body.dl-light .bg-dark, body.dl-light [class*="bg-dark"] {
+    background: #1e293b !important;
+    color: #f8fafc !important;
+}
+
+/* ── Light Background Variants ── */
+body.dl-light .bg-light-success { background: rgba(16, 185, 129, 0.1) !important; color: #059669 !important; }
+body.dl-light .bg-light-primary { background: rgba(79, 70, 229, 0.1) !important; color: #4f46e5 !important; }
+body.dl-light .bg-light-danger { background: rgba(220, 38, 38, 0.1) !important; color: #dc2626 !important; }
+body.dl-light .bg-light-warning { background: rgba(217, 119, 6, 0.1) !important; color: #d97706 !important; }
+body.dl-light .bg-light-info { background: rgba(2, 132, 199, 0.1) !important; color: #0284c7 !important; }
+
+/* ── Feature Icon Links ── */
+body.dl-light a.bg-gray-100,
+body.dl-light a.d-block.bg-gray-100 {
+    background: #f1f5f9 !important;
+    border-color: rgba(0, 0, 0, 0.06) !important;
+    color: #374151 !important;
+}
+
+body.dl-light a.bg-gray-100:hover,
+body.dl-light a.d-block.bg-gray-100:hover {
+    background: rgba(99, 102, 241, 0.08) !important;
+    border-color: rgba(99, 102, 241, 0.2) !important;
+    color: var(--dl-primary) !important;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.08) !important;
+}
+
+body.dl-light .text-over-all { color: #374151 !important; }
+
+/* ── View Plan Button ── */
+body.dl-light .btn.bg-gray-100 {
+    background: #f1f5f9 !important;
+    color: #374151 !important;
+    border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+body.dl-light .btn.bg-gray-100:hover {
+    background: rgba(99, 102, 241, 0.1) !important;
+    color: var(--dl-primary) !important;
+}
+
+/* ── Form Controls ── */
+body.dl-light .form-control, body.dl-light .form-select {
+    background-color: #fff !important;
+    border-color: #d1d5db !important;
+    color: #1e293b !important;
+}
+
+body.dl-light .form-control::placeholder { color: #9ca3af !important; }
+
+body.dl-light .form-control:focus, body.dl-light .form-select:focus {
+    background-color: #fff !important;
+    border-color: var(--dl-primary) !important;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12) !important;
+}
+
+body.dl-light .form-control-solid,
+body.dl-light .form-control.bg-light {
+    background: #f1f5f9 !important;
+    border-color: #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+body.dl-light .input-group-text.bg-gray-100,
+body.dl-light .input-group-text.bg-light {
+    background: #f1f5f9 !important;
+    border-color: #e2e8f0 !important;
+    color: #64748b !important;
+}
+
+/* ── Buttons ── */
+body.dl-light .btn-primary {
+    background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%) !important;
+    box-shadow: 0 2px 8px rgba(79, 70, 229, 0.2) !important;
+}
+
+body.dl-light .btn-primary:hover {
+    background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%) !important;
+    box-shadow: 0 4px 15px rgba(79, 70, 229, 0.3) !important;
+}
+
+/* ── Tables ── */
+body.dl-light .table thead th {
+    background: #f8fafc !important;
+    color: #64748b !important;
+    border-color: #e2e8f0 !important;
+}
+
+body.dl-light .table tbody td {
+    border-color: #f1f5f9 !important;
+    color: #374151 !important;
+}
+
+body.dl-light .table tbody tr:hover td {
+    background: rgba(99, 102, 241, 0.03) !important;
+}
+
+body.dl-light .table-striped > tbody > tr:nth-of-type(odd) > * {
+    --bs-table-accent-bg: #f8fafc !important;
+    color: #374151 !important;
+}
+
+body.dl-light .table-bordered { border-color: #e2e8f0 !important; }
+body.dl-light .table-bordered > :not(caption) > * > * { border-color: #e2e8f0 !important; }
+
+/* ── Border Utility ── */
+body.dl-light .border { border-color: rgba(0, 0, 0, 0.06) !important; }
+
+/* ── Dropdowns ── */
+body.dl-light .dropdown-menu {
+    background: #fff !important;
+    backdrop-filter: none !important;
+    border-color: rgba(0, 0, 0, 0.06) !important;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08) !important;
+}
+
+body.dl-light .dropdown-item { color: #374151 !important; }
+body.dl-light .dropdown-item:hover { background: rgba(99, 102, 241, 0.06) !important; color: var(--dl-primary) !important; }
+
+/* ── Modals ── */
+body.dl-light .modal-content {
+    background: #fff !important;
+    backdrop-filter: none !important;
+    border-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+body.dl-light .modal-header, body.dl-light .modal-footer {
+    border-color: #f1f5f9 !important;
+}
+
+/* ── Loading ── */
+body.dl-light .loading {
+    background: rgba(255, 255, 255, 0.9) !important;
+    backdrop-filter: blur(8px) !important;
+}
+
+/* ── Scrollbar ── */
+body.dl-light ::-webkit-scrollbar-track { background: #f1f5f9; }
+body.dl-light ::-webkit-scrollbar-thumb { background: #cbd5e1; }
+body.dl-light ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* ── Soft Badges ── */
+body.dl-light .bg-soft-danger { background: #fef2f2 !important; color: #dc2626 !important; }
+body.dl-light .bg-soft-warning { background: #fffbeb !important; color: #d97706 !important; }
+body.dl-light .bg-soft-success { background: rgba(16, 185, 129, 0.1) !important; color: #059669 !important; }
+
+/* ── Alerts ── */
+body.dl-light .alert-danger { background: #fef2f2 !important; border-color: #fecaca !important; color: #991b1b !important; }
+body.dl-light .alert-warning { background: #fffbeb !important; border-color: #fde68a !important; color: #92400e !important; }
+body.dl-light .alert-success { background: #ecfdf5 !important; border-color: #a7f3d0 !important; color: #065f46 !important; }
+body.dl-light .alert-info { background: #eff6ff !important; border-color: #bfdbfe !important; color: #1e40af !important; }
+
+/* ── Icons — no neon effects in light mode ── */
+body.dl-light .card i.fa-2x,
+body.dl-light .card i.fad,
+body.dl-light .card i.fas,
+body.dl-light .card i.fab,
+body.dl-light .card i[class*="fs-"] {
+    filter: none !important;
+}
+
+body.dl-light .card:hover i.fa-2x,
+body.dl-light .card:hover i.fad,
+body.dl-light .card:hover i.fas,
+body.dl-light .card:hover i.fab,
+body.dl-light .card:hover i[class*="fs-"] {
+    filter: brightness(1.1) saturate(1.2) !important;
+    text-shadow: none !important;
+}
+
+body.dl-light .rounded-circle.p-3::after { display: none !important; }
+
+body.dl-light .sidebar .nav-link.active i {
+    animation: none !important;
+}
+
+/* ── Pagination ── */
+body.dl-light .pagination .page-link {
+    color: #64748b !important;
+    border-color: #e2e8f0 !important;
+}
+
+body.dl-light .pagination .page-link:hover {
+    background: rgba(99, 102, 241, 0.06) !important;
+    color: var(--dl-primary) !important;
+}
+
+/* ── Smooth Transition ── */
+body.dl-light, body.dl-light *,
+body.dl-dark, body.dl-dark * {
+    transition: background-color 0.3s ease, color 0.2s ease, border-color 0.3s ease, box-shadow 0.3s ease !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   ██  54. NUCLEAR DARK OVERRIDE — Kill ALL White Backgrounds      ██
+   ██  This section catches every possible white/light area        ██
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* --- Sub-sidebar (settings/special_leads pages) --- */
+.sub-sidebar,
+.sub-sidebar.bg-white,
+div.sub-sidebar,
+.sub-sidebar[style] {
+    background: rgba(15, 23, 42, 0.65) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border-right: 1px solid rgba(99, 102, 241, 0.15) !important;
+    box-shadow: 10px 0 30px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* --- Content area containers with inline bg-white --- */
+.column-content,
+.column-content.bg-white,
+.column-two,
+.column-two.bg-white,
+.main-wrapper .bg-white,
+.main-wrapper [style*="background-color: #fff"],
+.main-wrapper [style*="background: #fff"],
+.main-wrapper [style*="background-color: white"],
+.main-wrapper [style*="background: white"],
+.main-wrapper [style*="background:#fff"],
+.main-wrapper [style*="background:white"],
+div.bg-white,
+section.bg-white {
+    background: transparent !important;
+    backdrop-filter: none !important;
+}
+
+/* --- Force dark on ALL card variants --- */
+.card,
+.card.bg-white,
+.card[style*="background"],
+.card-header,
+.card-header.bg-white,
+.card-footer,
+.card-footer.bg-white {
+    background: rgba(30, 41, 59, 0.5) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    color: #e2e8f0 !important;
+}
+
+.card-header {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+.card-footer {
+    border-top: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+/* --- Nav pills & tabs (used in sub-navigation panels) --- */
+.nav-pills,
+.nav-tabs,
+.nav.flex-column,
+.nav.flex-column.nav-pills {
+    background: transparent !important;
+}
+
+.nav-pills .nav-link,
+.nav.flex-column .nav-link {
+    color: #94a3b8 !important;
+    border-radius: 10px !important;
+    transition: all 0.25s ease !important;
+    border: 1px solid transparent !important;
+}
+
+.nav-pills .nav-link:hover,
+.nav.flex-column .nav-link:hover {
+    background: rgba(99, 102, 241, 0.12) !important;
+    color: #e2e8f0 !important;
+    border-color: rgba(99, 102, 241, 0.2) !important;
+}
+
+.nav-pills .nav-link.active,
+.nav.flex-column .nav-link.active {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.25) 0%, rgba(139, 92, 246, 0.15) 100%) !important;
+    color: #fff !important;
+    border-color: rgba(99, 102, 241, 0.3) !important;
+    box-shadow: 0 4px 15px rgba(99, 102, 241, 0.15) !important;
+    font-weight: 600 !important;
+}
+
+/* --- Tab content panels --- */
+.tab-content,
+.tab-pane,
+.tab-content .tab-pane {
+    background: transparent !important;
+    color: #e2e8f0 !important;
+}
+
+/* --- SP menu (settings left navigation) --- */
+.sp-menu,
+.sp-menu.bg-white,
+.sp-menu-wrapper,
+.settings-nav,
+.settings-sidebar {
+    background: transparent !important;
+}
+
+.sp-menu .menu-item .menu-link {
+    color: #94a3b8 !important;
+    border: 1px solid transparent !important;
+    border-radius: 10px !important;
+    padding: 10px 14px !important;
+    transition: all 0.25s ease !important;
+}
+
+.sp-menu .menu-item .menu-link:hover {
+    background: rgba(99, 102, 241, 0.15) !important;
+    color: #fff !important;
+    border-color: rgba(99, 102, 241, 0.25) !important;
+    box-shadow: 0 0 15px rgba(99, 102, 241, 0.1) !important;
+}
+
+.sp-menu .menu-item .menu-link.active,
+.sp-menu .menu-item.active .menu-link {
+    background: linear-gradient(90deg, rgba(99, 102, 241, 0.25) 0%, rgba(99, 102, 241, 0.1) 100%) !important;
+    color: #fff !important;
+    font-weight: 600 !important;
+    border-left: 3px solid var(--dl-primary) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+}
+
+.sp-menu .menu-item .menu-link i,
+.sp-menu .menu-item .menu-link img {
+    filter: brightness(1.2) !important;
+    transition: all 0.25s ease !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   ██  55. FORM ELEMENTS — Universal Dark Glass Style              ██
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* All form inputs, selects, and textareas */
+.form-control,
+.form-select,
+textarea.form-control,
+input.form-control,
+select.form-select,
+.form-control[style],
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="url"],
+input[type="tel"],
+input[type="search"],
+input[type="date"],
+input[type="datetime-local"],
+textarea {
+    background-color: rgba(15, 23, 42, 0.6) !important;
+    border: 1.5px solid rgba(255, 255, 255, 0.12) !important;
+    color: #f8fafc !important;
+    border-radius: 10px !important;
+    transition: all 0.25s ease !important;
+}
+
+.form-control:focus,
+.form-select:focus,
+textarea:focus,
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+input[type="number"]:focus,
+input[type="url"]:focus,
+input[type="tel"]:focus,
+input[type="search"]:focus,
+input[type="date"]:focus,
+textarea:focus {
+    background-color: rgba(15, 23, 42, 0.8) !important;
+    border-color: rgba(99, 102, 241, 0.5) !important;
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15), 0 0 20px rgba(99, 102, 241, 0.08) !important;
+    color: #f8fafc !important;
+    outline: none !important;
+}
+
+.form-control::placeholder,
+textarea::placeholder,
+input::placeholder {
+    color: #64748b !important;
+}
+
+/* Form labels */
+.form-label,
+label,
+.col-form-label {
+    color: #cbd5e1 !important;
+    font-weight: 600 !important;
+    font-size: 13px !important;
+}
+
+/* Form-control-solid (settings) */
+.form-control-solid,
+.form-control.form-control-solid {
+    background-color: rgba(15, 23, 42, 0.5) !important;
+    border: 1.5px solid rgba(255, 255, 255, 0.08) !important;
+    color: #f1f5f9 !important;
+}
+
+.form-control-solid:focus,
+.form-control.form-control-solid:focus {
+    background-color: rgba(15, 23, 42, 0.7) !important;
+    border-color: rgba(99, 102, 241, 0.4) !important;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15) !important;
+}
+
+/* Input group addons */
+.input-group-text {
+    background: rgba(30, 41, 59, 0.5) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    color: #94a3b8 !important;
+}
+
+/* Checkboxes & radios */
+.form-check-input {
+    background-color: rgba(15, 23, 42, 0.6) !important;
+    border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+.form-check-input:checked {
+    background-color: var(--dl-primary) !important;
+    border-color: var(--dl-primary) !important;
+}
+
+.form-check-label {
+    color: #cbd5e1 !important;
+}
+
+/* Select2 dark overrides */
+.select2-container--default .select2-selection--single,
+.select2-container--default .select2-selection--multiple {
+    background-color: rgba(15, 23, 42, 0.6) !important;
+    border-color: rgba(255, 255, 255, 0.12) !important;
+    color: #f8fafc !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+    color: #f8fafc !important;
+}
+
+.select2-dropdown {
+    background: rgba(30, 41, 59, 0.95) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    backdrop-filter: blur(20px) !important;
+}
+
+.select2-container--default .select2-results__option {
+    color: #cbd5e1 !important;
+}
+
+.select2-container--default .select2-results__option--highlighted[aria-selected] {
+    background: rgba(99, 102, 241, 0.3) !important;
+    color: #fff !important;
+}
+
+.select2-container--default .select2-search--dropdown .select2-search__field {
+    background: rgba(15, 23, 42, 0.6) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    color: #f8fafc !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   ██  56. LIST GROUPS & ACCORDIONS — Dark Theme                   ██
+   ═══════════════════════════════════════════════════════════════════ */
+
+.list-group-item {
+    background: rgba(30, 41, 59, 0.4) !important;
+    border-color: rgba(255, 255, 255, 0.06) !important;
+    color: #e2e8f0 !important;
+    transition: all 0.2s ease !important;
+}
+
+.list-group-item:hover {
+    background: rgba(30, 41, 59, 0.6) !important;
+}
+
+.list-group-item.active {
+    background: rgba(99, 102, 241, 0.2) !important;
+    border-color: rgba(99, 102, 241, 0.3) !important;
+    color: #fff !important;
+}
+
+/* Accordion */
+.accordion-item {
+    background: rgba(30, 41, 59, 0.4) !important;
+    border-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+.accordion-button {
+    background: rgba(30, 41, 59, 0.5) !important;
+    color: #e2e8f0 !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+.accordion-button:not(.collapsed) {
+    background: rgba(99, 102, 241, 0.15) !important;
+    color: #c7d2fe !important;
+}
+
+.accordion-button::after {
+    filter: invert(1) !important;
+}
+
+.accordion-body {
+    background: rgba(30, 41, 59, 0.3) !important;
+    color: #cbd5e1 !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   ██  57. OFFCANVAS & POPOVER — Dark Glassmorphism                ██
+   ═══════════════════════════════════════════════════════════════════ */
+
+.offcanvas {
+    background: rgba(15, 23, 42, 0.95) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    border-color: rgba(255, 255, 255, 0.06) !important;
+    color: #e2e8f0 !important;
+}
+
+.offcanvas-header {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+.offcanvas-title {
+    color: #f8fafc !important;
+}
+
+.popover {
+    background: rgba(30, 41, 59, 0.95) !important;
+    backdrop-filter: blur(20px) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.popover-header {
+    background: rgba(30, 41, 59, 0.8) !important;
+    color: #f8fafc !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+.popover-body {
+    color: #cbd5e1 !important;
+}
+
+.webui-popover {
+    background: rgba(30, 41, 59, 0.95) !important;
+    backdrop-filter: blur(20px) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.webui-popover-content {
+    color: #cbd5e1 !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   ██  58. BOOTSTRAP BGGROUND NUCLEAR OVERRIDES                    ██
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Kill all bg-white everywhere in the main-wrapper */
+.main-wrapper .bg-white,
+.main-wrapper div.bg-white,
+.main-wrapper section.bg-white,
+.column-two .bg-white,
+.column-content .bg-white,
+.container .bg-white,
+.container-fluid .bg-white {
+    background: rgba(30, 41, 59, 0.5) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    color: #e2e8f0 !important;
+}
+
+/* bg-body */
+.bg-body {
+    background: transparent !important;
+}
+
+/* Panel, well, etc old classes */
+.panel,
+.panel-body,
+.panel-heading,
+.panel-footer,
+.well {
+    background: rgba(30, 41, 59, 0.4) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    color: #e2e8f0 !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   ██  59. INLINE STYLE OVERRIDES — [style*="background"]          ██
+   ║  Catch pages that use inline background:#fff                  ║
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Cards with inline white backgrounds */
+.main-wrapper div[style*="background-color: #fff"],
+.main-wrapper div[style*="background-color:#fff"],
+.main-wrapper div[style*="background: #fff"],
+.main-wrapper div[style*="background:#fff"],
+.main-wrapper div[style*="background-color: white"],
+.main-wrapper div[style*="background-color:white"],
+.main-wrapper div[style*="background: white"],
+.main-wrapper div[style*="background:white"],
+.main-wrapper div[style*="background-color: #ffffff"],
+.main-wrapper div[style*="background-color:#ffffff"],
+.main-wrapper div[style*="background: #ffffff"],
+.main-wrapper div[style*="background:#ffffff"],
+.main-wrapper div[style*="background: rgb(255, 255, 255)"],
+.main-wrapper div[style*="background-color: rgb(255, 255, 255)"],
+.main-wrapper section[style*="background"],
+.main-wrapper form[style*="background"] {
+    background: rgba(30, 41, 59, 0.5) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    color: #e2e8f0 !important;
+}
+
+/* Also catch light gray inline backgrounds */
+.main-wrapper div[style*="background-color: #f8f9fa"],
+.main-wrapper div[style*="background-color:#f8f9fa"],
+.main-wrapper div[style*="background: #f8f9fa"],
+.main-wrapper div[style*="background-color: #f1f5f9"],
+.main-wrapper div[style*="background: #f1f5f9"],
+.main-wrapper div[style*="background-color: #f3f4f6"],
+.main-wrapper div[style*="background: #f3f4f6"],
+.main-wrapper div[style*="background-color: #e5e7eb"],
+.main-wrapper div[style*="background: #e5e7eb"],
+.main-wrapper div[style*="background-color: #f9fafb"],
+.main-wrapper div[style*="background: #f9fafb"] {
+    background: rgba(30, 41, 59, 0.35) !important;
+    border-color: rgba(255, 255, 255, 0.06) !important;
+    color: #e2e8f0 !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   ██  60. PAGE-SPECIFIC CONTENT CONTAINERS                        ██
+   ║  Common layout wrappers used across feature pages             ║
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Settings page main content area */
+.column-two,
+.column-content,
+.column-one,
+.container-xxl,
+.container-xl {
+    background: transparent !important;
+    color: #e2e8f0 !important;
+}
+
+/* Content wrappers used by various pages */
+.content,
+.content-wrapper,
+.main-content,
+.page-content,
+.page-wrapper {
+    background: transparent !important;
+}
+
+/* Section headers */
+.section-header,
+.page-header,
+.content-header {
+    background: transparent !important;
+    color: #f8fafc !important;
+}
+
+/* Breadcrumb */
+.breadcrumb {
+    background: transparent !important;
+}
+
+.breadcrumb-item {
+    color: #94a3b8 !important;
+}
+
+.breadcrumb-item.active {
+    color: #e2e8f0 !important;
+}
+
+.breadcrumb-item + .breadcrumb-item::before {
+    color: #64748b !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   ██  61. WHATSAPP TEMPLATE BUILDER & SPECIAL PAGES               ██
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Template builder cards */
+.template-card,
+.template-preview,
+.preview-card {
+    background: rgba(30, 41, 59, 0.5) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    color: #e2e8f0 !important;
+}
+
+/* WhatsApp chat preview bubbles light bg override */
+.chat-preview,
+.whatsapp-preview,
+.wa-preview {
+    background: rgba(30, 41, 59, 0.6) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* API automation dashboard */
+.stat-card,
+.stats-card,
+.insight-card {
+    background: rgba(30, 41, 59, 0.5) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    color: #e2e8f0 !important;
+}
+
+/* CRM pages */
+.crm-card,
+.lead-card,
+.pipeline-card {
+    background: rgba(30, 41, 59, 0.5) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    color: #e2e8f0 !important;
+}
+
+/* Horizontal rule in dark */
+hr {
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    opacity: 1 !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   ██  62. CLOSE BUTTONS & MISC UI — Dark Theme Compatible        ██
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Close button (modals, alerts) */
+.btn-close {
+    filter: invert(1) brightness(0.8) !important;
+}
+
+/* Dividers / Separators */
+.separator,
+.divider {
+    border-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+/* Help text / small muted text */
+.form-text,
+.help-block,
+.text-help {
+    color: #64748b !important;
+}
+
+/* Required asterisks */
+.required,
+.text-danger.required {
+    color: #f87171 !important;
+}
+
+/* Back buttons / navigation links */
+a.text-dark,
+a.text-gray-900,
+a.text-gray-800 {
+    color: #e2e8f0 !important;
+}
+
+a.text-dark:hover,
+a.text-gray-900:hover {
+    color: #c7d2fe !important;
+}
+
+/* Image previews on dark bg */
+.image-input,
+.image-input-wrapper {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    background-color: rgba(15, 23, 42, 0.4) !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   ██  63. CONTAINER BACKGROUND FIXES FOR ALL PAGES               ██
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* The main layout containers  */
+.d-flex.h-100 > .main-wrapper {
+    background: transparent !important;
+}
+
+/* Ensure body background shows through */
+.main-wrapper > * {
+    /* Let container content have transparent bg by default */
+}
+
+/* Override overflow containers */
+.main-wrapper .column-one {
+    background: transparent !important;
+    overflow-y: auto !important;
+}
+
+/* All py/px containers inside main-wrapper (exclude buttons) */
+.main-wrapper .py-4:not(.btn):not(button),
+.main-wrapper .py-5:not(.btn):not(button),
+.main-wrapper .px-4:not(.btn):not(button),
+.main-wrapper .px-5:not(.btn):not(button),
+.main-wrapper .p-4:not(.btn):not(button),
+.main-wrapper .p-5:not(.btn):not(button),
+.main-wrapper .container.py-4,
+.main-wrapper .container.px-4 {
+    background: transparent !important;
+}
+
+/* Row items  */
+.main-wrapper .row {
+    /* -- transparent, let card backgrounds do the work -- */
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   ██  64. DATATABLE / DATATABLES — Dark Theme                    ██
+   ═══════════════════════════════════════════════════════════════════ */
+
+.dataTables_wrapper {
+    color: #cbd5e1 !important;
+}
+
+.dataTables_wrapper .dataTables_length,
+.dataTables_wrapper .dataTables_filter,
+.dataTables_wrapper .dataTables_info,
+.dataTables_wrapper .dataTables_paginate {
+    color: #94a3b8 !important;
+}
+
+.dataTables_wrapper .dataTables_length select,
+.dataTables_wrapper .dataTables_filter input {
+    background: rgba(15, 23, 42, 0.6) !important;
+    border-color: rgba(255, 255, 255, 0.12) !important;
+    color: #f8fafc !important;
+    border-radius: 8px !important;
+}
+
+table.dataTable {
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+}
+
+table.dataTable thead th,
+table.dataTable thead td {
+    background: rgba(30, 41, 59, 0.6) !important;
+    color: #94a3b8 !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+    font-weight: 600 !important;
+    font-size: 12px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+}
+
+table.dataTable tbody td {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+    color: #cbd5e1 !important;
+}
+
+table.dataTable tbody tr:hover td {
+    background: rgba(99, 102, 241, 0.06) !important;
+}
+
+table.dataTable tbody tr.odd {
+    background: rgba(30, 41, 59, 0.2) !important;
+}
+
+table.dataTable tbody tr.even {
+    background: transparent !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   ██  65. ENHANCED VISUAL POLISH — Premium Dark Finishing Touches ██
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Subtle inner glow on all cards */
+.card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: 0;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.03) 0%, transparent 50%, rgba(139, 92, 246, 0.02) 100%);
+}
+
+/* Pretty gradient borders on hover for main content cards */
+.card:hover {
+    border-color: rgba(99, 102, 241, 0.2) !important;
+    box-shadow: 
+        0 0 0 1px rgba(99, 102, 241, 0.1),
+        0 8px 32px rgba(0, 0, 0, 0.2),
+        0 0 60px rgba(99, 102, 241, 0.04) !important;
+}
+
+/* Text readability helpers — cover ALL text scenarios */
+span, div, td, th, li, p, label, a {
+    /* Ensure inherited text is visible on dark */
+}
+
+/* Black text fix — any text that was explicitly set black */
+[style*="color: #000"],
+[style*="color:#000"],
+[style*="color: black"],
+[style*="color:black"],
+[style*="color: #333"],
+[style*="color:#333"],
+[style*="color: #212529"],
+[style*="color:#212529"] {
+    color: #e2e8f0 !important;
+}
+
+/* Ensure sub-headings in any page are visible */
+.sub-header h2,
+.sub-header h3,
+.page-title,
+.section-title {
+    color: #f8fafc !important;
+}
+
+/* Default link color enhancement */
+a:not(.btn):not(.nav-link):not(.dropdown-item):not(.page-link) {
+    color: #93c5fd !important;
+    text-decoration: none !important;
+    transition: color 0.2s ease !important;
+}
+
+a:not(.btn):not(.nav-link):not(.dropdown-item):not(.page-link):hover {
+    color: #bfdbfe !important;
+}
+
+/* Fix any remaining border-bottom with light colors */
+[style*="border-bottom: 1px solid #e"],
+[style*="border-bottom: 1px solid #d"],
+[style*="border-bottom: 1px solid #f"] {
+    border-bottom-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+/* Column-two scrollable area bg fix */
+.column-two > div,
+.column-two > section,
+.column-two > form {
+    background: transparent !important;
+}
+
+/* Fix white inner sections on settings/forms */
+.column-two .card-body,
+.column-two .card-header,
+.column-content .card-body,
+.column-content .card-header {
+    background: transparent !important;
+    color: #e2e8f0 !important;
+}
+
+/* Small helper text under forms */
+.small.text-danger,
+.small.text-muted,
+small.text-danger,
+small.text-muted,
+.form-text.text-muted {
+    color: #94a3b8 !important;
+}
+
+.small.text-danger,
+small.text-danger {
+    color: #f87171 !important;
+}
+
+/* Ensure all inner containers are transparent */
+.container > .row > div,
+.container-fluid > .row > div {
+    /* transparent by default in dark theme */
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ██  65.5. WHATSAPP LIVECHAT & ADVANCED — Dark Page Overrides    ██
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* LiveChat container */
+.livechat-container,
+.livechat-container.bg-white {
+    background: rgba(30, 41, 59, 0.5) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* LiveChat sidebar */
+.livechat-sidebar,
+.livechat-sidebar .bg-white,
+.livechat-sidebar .p-4.border-bottom.bg-white,
+.livechat-sidebar .p-3.bg-white.border-top {
+    background: rgba(15, 23, 42, 0.6) !important;
+    border-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+/* LiveChat main area */
+.livechat-main,
+.livechat-main.bg-white,
+.livechat-main.bg-light {
+    background: rgba(30, 41, 59, 0.4) !important;
+}
+
+/* LiveChat header bar */
+.livechat-main .bg-white.shadow-sm,
+.livechat-main .p-3.border-bottom.bg-white,
+.livechat-main .p-3.border-top.bg-white {
+    background: rgba(15, 23, 42, 0.5) !important;
+    border-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+/* AI Copilot panel */
+.ai-copilot-panel,
+.ai-copilot-panel.bg-light {
+    background: rgba(15, 23, 42, 0.65) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.ai-copilot-panel .bg-white {
+    background: rgba(30, 41, 59, 0.5) !important;
+    border-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+/* Advanced tools wrapper */
+.advanced-tools-wrapper,
+.advanced-tools-wrapper.bg-light {
+    background: transparent !important;
+}
+
+/* Advanced tools sub-sidebar */
+.advanced-tools-wrapper .bg-light.border-end,
+.advanced-tools-wrapper > .row > .bg-light {
+    background: rgba(15, 23, 42, 0.5) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+/* Chat list items */
+.chat-user-item:hover,
+.chat-user-item.active {
+    background: rgba(99, 102, 241, 0.12) !important;
+}
+
+/* Reply quote area */
+.reply-preview,
+.reply-area {
+    background: rgba(15, 23, 42, 0.5) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Form-select light override */
+.form-select {
+    background-color: rgba(15, 23, 42, 0.6) !important;
+    border-color: rgba(255, 255, 255, 0.12) !important;
+    color: #f8fafc !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   ██  66. LIGHT THEME OVERRIDES — Undo dark for body.dl-light     ██
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Undo nuclear dark overrides when light theme is active */
+body.dl-light .sub-sidebar,
+body.dl-light .sub-sidebar.bg-white,
+body.dl-light div.sub-sidebar {
+    background: #fff !important;
+    backdrop-filter: none !important;
+    border-right: 1px solid rgba(0, 0, 0, 0.06) !important;
+    box-shadow: 1px 0 4px rgba(0, 0, 0, 0.02) !important;
+}
+
+body.dl-light .card,
+body.dl-light .card.bg-white,
+body.dl-light .card-header,
+body.dl-light .card-header.bg-white,
+body.dl-light .card-footer,
+body.dl-light .card-footer.bg-white {
+    background: rgba(255, 255, 255, 0.9) !important;
+    backdrop-filter: blur(8px) !important;
+    border-color: rgba(0, 0, 0, 0.06) !important;
+    color: #1e293b !important;
+}
+
+body.dl-light .card-header {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06) !important;
+}
+
+body.dl-light .card-footer {
+    border-top: 1px solid rgba(0, 0, 0, 0.06) !important;
+}
+
+body.dl-light .main-wrapper .bg-white,
+body.dl-light .main-wrapper div.bg-white,
+body.dl-light .column-two .bg-white,
+body.dl-light .container .bg-white {
+    background: #fff !important;
+    backdrop-filter: none !important;
+    color: #1e293b !important;
+}
+
+body.dl-light .nav-pills .nav-link {
+    color: #64748b !important;
+}
+
+body.dl-light .nav-pills .nav-link:hover {
+    background: rgba(99, 102, 241, 0.06) !important;
+    color: #4f46e5 !important;
+}
+
+body.dl-light .nav-pills .nav-link.active {
+    background: #4f46e5 !important;
+    color: #fff !important;
+    border-color: transparent !important;
+}
+
+body.dl-light .form-control,
+body.dl-light .form-select,
+body.dl-light textarea,
+body.dl-light input[type="text"],
+body.dl-light input[type="email"],
+body.dl-light input[type="password"],
+body.dl-light input[type="number"],
+body.dl-light input[type="url"] {
+    background-color: #fff !important;
+    border-color: #d1d5db !important;
+    color: #1e293b !important;
+}
+
+body.dl-light .form-control:focus,
+body.dl-light .form-select:focus {
+    background-color: #fff !important;
+    border-color: var(--dl-primary) !important;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12) !important;
+}
+
+body.dl-light .form-control::placeholder,
+body.dl-light input::placeholder {
+    color: #9ca3af !important;
+}
+
+body.dl-light .form-label,
+body.dl-light label,
+body.dl-light .col-form-label {
+    color: #374151 !important;
+}
+
+body.dl-light .form-check-input {
+    background-color: #fff !important;
+    border-color: #d1d5db !important;
+}
+
+body.dl-light .form-check-input:checked,
+body.dl-light input[type="checkbox"]:checked,
+body.dl-light input[type="radio"]:checked {
+    background-color: #6366f1 !important;
+    border-color: #6366f1 !important;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%23fff' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='M6 10l3 3l6-6'/%3e%3c/svg%3e") !important;
+}
+
+body.dl-light input[type="radio"]:checked {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='2' fill='%23fff'/%3e%3c/svg%3e") !important;
+}
+
+/* Custom Select Group / Image Check Fix for Light Mode */
+body.dl-light .selectgroup-item .selectgroup-button {
+    background-color: #fff !important;
+    border-color: #e2e8f0 !important;
+    color: #64748b !important;
+}
+
+body.dl-light .selectgroup-input:checked + .selectgroup-button {
+    background-color: #6366f1 !important;
+    border-color: #6366f1 !important;
+    color: #fff !important;
+    z-index: 1 !important;
+}
+
+/* Fix for custom radio/checkbox buttons that might use labels as containers */
+body.dl-light .btn-group-toggle .btn input:checked + label,
+body.dl-light .btn-group-toggle .btn.active {
+    background-color: #6366f1 !important;
+    border-color: #6366f1 !important;
+    color: #fff !important;
+}
+body.dl-light .input-group-text {
+    background: #f1f5f9 !important;
+    border-color: #e2e8f0 !important;
+    color: #64748b !important;
+}
+
+body.dl-light .list-group-item {
+    background: #fff !important;
+    border-color: #e5e7eb !important;
+    color: #374151 !important;
+}
+
+body.dl-light .accordion-item {
+    background: #fff !important;
+    border-color: #e5e7eb !important;
+}
+
+body.dl-light .accordion-button {
+    background: #f8fafc !important;
+    color: #1e293b !important;
+}
+
+body.dl-light .accordion-button:not(.collapsed) {
+    background: rgba(99, 102, 241, 0.06) !important;
+    color: #4f46e5 !important;
+}
+
+body.dl-light .accordion-button::after {
+    filter: none !important;
+}
+
+body.dl-light .offcanvas {
+    background: #fff !important;
+    color: #1e293b !important;
+}
+
+body.dl-light .btn-close {
+    filter: none !important;
+}
+
+body.dl-light .sp-menu .menu-item .menu-link {
+    color: #64748b !important;
+}
+
+body.dl-light .sp-menu .menu-item .menu-link:hover {
+    background: rgba(99, 102, 241, 0.08) !important;
+    color: #4f46e5 !important;
+    border-color: transparent !important;
+}
+
+body.dl-light .sp-menu .menu-item .menu-link.active,
+body.dl-light .sp-menu .menu-item.active .menu-link {
+    background: rgba(99, 102, 241, 0.1) !important;
+    color: #4f46e5 !important;
+    border-left-color: #4f46e5 !important;
+}
+
+body.dl-light .card::after {
+    display: none !important;
+}
+
+body.dl-light a:not(.btn):not(.nav-link):not(.dropdown-item):not(.page-link) {
+    color: #4f46e5 !important;
+}
+
+body.dl-light a:not(.btn):not(.nav-link):not(.dropdown-item):not(.page-link):hover {
+    color: #6366f1 !important;
+}
+
+body.dl-light hr {
+    border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+body.dl-light [style*="color: #000"],
+body.dl-light [style*="color:#000"],
+body.dl-light [style*="color: black"],
+body.dl-light [style*="color: #333"] {
+    color: inherit !important;
+}
+
+body.dl-light .select2-container--default .select2-selection--single,
+body.dl-light .select2-container--default .select2-selection--multiple,
+body.dl-light .select2-container--bootstrap-5 .select2-selection--single,
+body.dl-light .select2-container--bootstrap-5 .select2-selection--multiple,
+body.dl-light .select2-container--bootstrap5 .select2-selection--single,
+body.dl-light .select2-container--bootstrap5 .select2-selection--multiple {
+    background-color: #fff !important;
+    border-color: #d1d5db !important;
+    color: #1e293b !important;
+}
+
+body.dl-light .select2-dropdown,
+body.dl-light .select2-container--bootstrap-5 .select2-dropdown,
+body.dl-light .select2-container--bootstrap5 .select2-dropdown {
+    background: #fff !important;
+    border-color: #e5e7eb !important;
+}
+
+body.dl-light .select2-container--default .select2-results__option,
+body.dl-light .select2-container--bootstrap-5 .select2-results__option,
+body.dl-light .select2-container--bootstrap5 .select2-results__option {
+    color: #374151 !important;
+}
+
+body.dl-light .select2-container--default .select2-search--dropdown .select2-search__field,
+body.dl-light .select2-container--bootstrap-5 .select2-search--dropdown .select2-search__field,
+body.dl-light .select2-container--bootstrap5 .select2-search--dropdown .select2-search__field {
+    background: #fff !important;
+    border-color: #d1d5db !important;
+    color: #1e293b !important;
+}
+
+body.dl-light .select2-container--default .select2-selection--single .select2-selection__rendered,
+body.dl-light .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered,
+body.dl-light .select2-container--bootstrap5 .select2-selection--single .select2-selection__rendered {
+    color: #1e293b !important;
+}
+
+body.dl-light .dataTables_wrapper .dataTables_length select,
+body.dl-light .dataTables_wrapper .dataTables_filter input {
+    background: #fff !important;
+    border-color: #d1d5db !important;
+    color: #1e293b !important;
+}
+
+body.dl-light table.dataTable thead th {
+    background: #f8fafc !important;
+    color: #64748b !important;
+}
+
+body.dl-light table.dataTable tbody td {
+    color: #374151 !important;
+    border-color: #f1f5f9 !important;
+}
+
+body.dl-light table.dataTable tbody tr:hover td {
+    background: rgba(99, 102, 241, 0.03) !important;
+}
+
+body.dl-light table.dataTable tbody tr.odd {
+    background: #f8fafc !important;
+}
+
+/* Inline bg fixes for light theme: let original styles show through */
+body.dl-light .main-wrapper div[style*="background-color: #fff"],
+body.dl-light .main-wrapper div[style*="background: #fff"],
+body.dl-light .main-wrapper div[style*="background: white"],
+body.dl-light .main-wrapper div[style*="background-color: white"] {
+    background: #fff !important;
+    color: #1e293b !important;
+}
+
+/* Light theme: LiveChat & Advanced revert */
+body.dl-light .livechat-container,
+body.dl-light .livechat-container.bg-white {
+    background: #fff !important;
+    backdrop-filter: none !important;
+}
+
+body.dl-light .livechat-sidebar,
+body.dl-light .livechat-sidebar .bg-white,
+body.dl-light .livechat-main,
+body.dl-light .livechat-main.bg-white,
+body.dl-light .livechat-main.bg-light {
+    background: #fff !important;
+}
+
+body.dl-light .livechat-main .bg-white.shadow-sm,
+body.dl-light .livechat-main .p-3.border-bottom.bg-white,
+body.dl-light .livechat-main .p-3.border-top.bg-white {
+    background: #fff !important;
+    border-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+body.dl-light .ai-copilot-panel,
+body.dl-light .ai-copilot-panel.bg-light {
+    background: #f8fafc !important;
+    border-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+body.dl-light .advanced-tools-wrapper .bg-light.border-end,
+body.dl-light .advanced-tools-wrapper > .row > .bg-light {
+    background: #f8f9fa !important;
+    backdrop-filter: none !important;
+}
+
+body.dl-light .form-select {
+    background-color: #fff !important;
+    border-color: #d1d5db !important;
+    color: #1e293b !important;
+}
+
+/* ===============================
+   GLOBAL THEME TOKENS (Light/Dark)
+   Zero-Risk, CSS-Only
+================================ */
+:root {
+  --bg-main: #f6f8fc;
+  --bg-card: #ffffff;
+  --bg-sidebar: #ffffff;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --primary: #4f46e5;
+  --secondary: #22c55e;
+  --border-color: #e5e7eb;
+  --shadow-card: 0 10px 25px rgba(0,0,0,.08);
+}
+
+[data-theme="dark"] {
+  --bg-main: #0F172A;
+  --bg-card: rgba(15, 23, 42, 0.75);
+  --bg-sidebar: rgba(2, 6, 23, 0.9);
+  --text-main: #e5e7eb;
+  --text-muted: #94a3b8;
+  --primary: #818cf8;
+  --secondary: #34d399;
+  --border-color: rgba(255,255,255,.08);
+  --shadow-card: 0 20px 50px rgba(0,0,0,.6);
+}
+
+/* ===============================
+   GLOBAL DARK MODE — SMOOTH TRANSITION
+================================ */
+body {
+  transition: background 0.4s ease, color 0.3s ease;
+}
+
+/* ===============================
+   DARK MODE — AI GLOW EFFECTS (Premium)
+================================ */
+body.dark .card:hover,
+[data-theme="dark"] .card:hover {
+  box-shadow:
+    0 0 0 1px rgba(129,140,248,.3),
+    0 30px 80px rgba(0,0,0,.7) !important;
+}
+
+body.dark .btn-primary,
+[data-theme="dark"] .btn-primary {
+  background: linear-gradient(135deg, #6366f1, #22d3ee) !important;
+  border: none !important;
+  box-shadow: 0 0 20px rgba(99,102,241,.35) !important;
+}
+
+body.dark .btn-primary:hover,
+[data-theme="dark"] .btn-primary:hover {
+  background: linear-gradient(135deg, #818cf8, #38bdf8) !important;
+  box-shadow: 0 0 30px rgba(99,102,241,.5) !important;
+  transform: translateY(-1px);
+}
+
+/* ===============================
+   DARK — UNIVERSAL ELEMENT OVERRIDES
+================================ */
+body.dark h1, body.dark h2, body.dark h3, body.dark h4, body.dark h5, body.dark h6,
+[data-theme="dark"] h1, [data-theme="dark"] h2, [data-theme="dark"] h3,
+[data-theme="dark"] h4, [data-theme="dark"] h5, [data-theme="dark"] h6 {
+  color: var(--dl-text-primary, #e5e7eb);
+}
+
+body.dark .text-dark,
+[data-theme="dark"] .text-dark {
+  color: #e5e7eb !important;
+}
+
+body.dark .text-muted,
+[data-theme="dark"] .text-muted {
+  color: #94a3b8 !important;
+}
+
+body.dark a:not(.btn):not(.nav-link):not(.dropdown-item),
+[data-theme="dark"] a:not(.btn):not(.nav-link):not(.dropdown-item) {
+  color: #818cf8;
+}
+
+/* Inputs & Forms (Dark Safe) */
+body.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(.form-control):not(.form-check-input),
+body.dark textarea:not(.form-control),
+body.dark select:not(.form-select):not(.form-control) {
+  background: var(--dl-bg-elevated, #1E293B);
+  color: var(--dl-text-primary, #e5e7eb);
+  border-color: var(--dl-border, rgba(255,255,255,0.08));
+}
+
+body.dark input::placeholder,
+body.dark textarea::placeholder {
+  color: var(--dl-text-muted, #94a3b8) !important;
+}
+
+/* Background overrides for common utility classes */
+body.dark .bg-light,
+[data-theme="dark"] .bg-light {
+  background-color: rgba(15, 23, 42, 0.5) !important;
+}
+
+body.dark .bg-white:not(.header),
+[data-theme="dark"] .bg-white:not(.header) {
+  background-color: #1E293B !important;
+}
+
+body.dark .border,
+[data-theme="dark"] .border {
+  border-color: rgba(255,255,255,0.08) !important;
+}
+
+body.dark .border-bottom,
+[data-theme="dark"] .border-bottom {
+  border-bottom-color: rgba(255,255,255,0.08) !important;
+}
+
+body.dark .border-top,
+[data-theme="dark"] .border-top {
+  border-top-color: rgba(255,255,255,0.08) !important;
+}
+
+body.dark .border-end,
+[data-theme="dark"] .border-end {
+  border-right-color: rgba(255,255,255,0.08) !important;
+}
+
+body.dark .border-start,
+[data-theme="dark"] .border-start {
+  border-left-color: rgba(255,255,255,0.08) !important;
+}
+
+/* Panel / Widget / Box generics */
+body.dark .widget,
+body.dark .panel,
+body.dark .box,
+[data-theme="dark"] .widget,
+[data-theme="dark"] .panel,
+[data-theme="dark"] .box {
+  background: var(--bg-card, rgba(15,23,42,0.75));
+  border: 1px solid var(--border-color, rgba(255,255,255,.08));
+  box-shadow: var(--shadow-card, 0 20px 50px rgba(0,0,0,.6));
+}
+
+/* ===============================
+   DARK — DASHBOARD AI BACKGROUND
+================================ */
+body.dark .main-wrapper,
+[data-theme="dark"] .main-wrapper {
+  background:
+    radial-gradient(circle at 20% 20%, rgba(99,102,241,.08), transparent 40%),
+    radial-gradient(circle at 80% 80%, rgba(34,211,238,.06), transparent 40%),
+    #0F172A !important;
+}
+
+/* ===============================
+   DARK — SIDEBAR GLOW
+================================ */
+body.dark .sidebar,
+[data-theme="dark"] .sidebar {
+  background: var(--bg-sidebar, rgba(2, 6, 23, 0.9));
+  border-right-color: rgba(255,255,255,0.05) !important;
+}
+
+/* ===============================
+   DARK — HEADER GLOW
+================================ */
+body.dark .header,
+[data-theme="dark"] .header {
+  background: rgba(15, 23, 42, 0.92) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+}
+
+/* ===============================
+   DARK — CARD GLASSMORPHISM
+================================ */
+body.dark .card,
+[data-theme="dark"] .card {
+  background: rgba(30, 41, 59, 0.75) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  border: 1px solid rgba(255,255,255,0.06) !important;
+  transition: all 0.3s ease;
+}
+
+/* ===============================
+   DARK — BOT BUILDER CANVAS
+================================ */
+body.dark .canvas,
+[data-theme="dark"] .canvas {
+  background:
+    radial-gradient(circle at center, #020617, #000) !important;
+}
+
+body.dark .node,
+[data-theme="dark"] .node {
+  background: rgba(15,23,42,.9) !important;
+  border: 1px solid rgba(255,255,255,.08) !important;
+}
+
+/* ===============================
+   DARK — NAV TABS & PILLS
+================================ */
+body.dark .nav-tabs .nav-link,
+[data-theme="dark"] .nav-tabs .nav-link {
+  color: #94a3b8;
+}
+
+body.dark .nav-tabs .nav-link.active,
+[data-theme="dark"] .nav-tabs .nav-link.active {
+  background: rgba(30, 41, 59, 0.8) !important;
+  color: #f1f5f9 !important;
+  border-color: rgba(255,255,255,0.08) !important;
+}
+
+body.dark .nav-pills .nav-link.active,
+[data-theme="dark"] .nav-pills .nav-link.active {
+  background: linear-gradient(135deg, #6366f1, #22d3ee) !important;
+  color: #fff !important;
+}
+
+/* ===============================
+   DARK — BADGES & ALERTS
+================================ */
+body.dark .badge.bg-light,
+[data-theme="dark"] .badge.bg-light {
+  background-color: rgba(30, 41, 59, 0.8) !important;
+  color: #e2e8f0 !important;
+}
+
+body.dark .alert,
+[data-theme="dark"] .alert {
+  background: rgba(30, 41, 59, 0.6) !important;
+  border-color: rgba(255,255,255,0.08) !important;
+  color: #e2e8f0 !important;
+}
+
+/* ===============================
+   DARK — LIST GROUP
+================================ */
+body.dark .list-group-item,
+[data-theme="dark"] .list-group-item {
+  background: rgba(30, 41, 59, 0.5) !important;
+  border-color: rgba(255,255,255,0.06) !important;
+  color: #e2e8f0 !important;
+}
+
+body.dark .list-group-item:hover,
+[data-theme="dark"] .list-group-item:hover {
+  background: rgba(79, 70, 229, 0.1) !important;
+}
+
+/* ===============================
+   DARK — PAGINATION
+================================ */
+body.dark .page-link,
+[data-theme="dark"] .page-link {
+  background: rgba(30, 41, 59, 0.5) !important;
+  border-color: rgba(255,255,255,0.08) !important;
+  color: #94a3b8 !important;
+}
+
+body.dark .page-item.active .page-link,
+[data-theme="dark"] .page-item.active .page-link {
+  background: linear-gradient(135deg, #6366f1, #818cf8) !important;
+  border-color: transparent !important;
+  color: #fff !important;
+}
+
+/* ===============================
+   SP-SETTINGS (Dark Mode)
+================================ */
+body.dark .sp-settings-sidebar,
+[data-theme="dark"] .sp-settings-sidebar {
+  background: rgba(15, 23, 42, 0.85) !important;
+  border-color: rgba(255,255,255,0.06) !important;
+}
+
+body.dark .sp-settings-content,
+[data-theme="dark"] .sp-settings-content {
+  background: rgba(15, 23, 42, 0.5) !important;
+}
+
+/* ─────────────────────────────────────────────
+   LIGHT MODE FIXES FOR DARK CONTAINERS
+   (Fixes "Send Single Message" and other views using hardcoded dark classes)
+   ───────────────────────────────────────────── */
+body.dl-light .bg-gray-900,
+body.dl-light .bg-dark,
+body.dl-light .bg-gray-800,
+body.dl-light .bg-black {
+    background-color: #ffffff !important;
+    color: #1e293b !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+body.dl-light .bg-gray-900 .text-white,
+body.dl-light .bg-dark .text-white,
+body.dl-light .bg-gray-800 .text-white,
+body.dl-light .bg-black .text-white {
+    color: #1e293b !important;
+}
+
+body.dl-light .bg-gray-900 .text-gray-400,
+body.dl-light .bg-dark .text-gray-400 {
+    color: #64748b !important;
+}
+
+/* Ensure form labels are visible in light mode */
+body.dl-light .form-label,
+body.dl-light label {
+    color: #475569 !important;
+    font-weight: 600 !important;
+}
+
+/* Ensure inputs have correct styles in light mode */
+body.dl-light .form-control,
+body.dl-light .form-select {
+    background-color: #ffffff !important;
+    border-color: #e2e8f0 !important;
+    color: #0f172a !important;
+}
+
+body.dl-light .form-control:focus,
+body.dl-light .form-select:focus {
+    border-color: #6366f1 !important;
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1) !important;
+}
+
+/* ═══════════════════════════════════════════════
+   LIGHT MODE SIDEBAR — Let inline icon colors show
+   (Matches the sub-sidebar style: colorful icons, no bg)
+   ═══════════════════════════════════════════════ */
+
+/* Nav link text styling */
+body.dl-light .sidebar .sidebar-nav .nav .nav-link {
+    color: #475569 !important;
+    background: transparent !important;
+    border-radius: 10px !important;
+    margin-bottom: 2px !important;
+    transition: color 0.2s ease !important;
+}
+
+/* Let icons keep their inline colors from PHP, NO forced color, NO background */
+body.dl-light .sidebar .sidebar-nav .nav .nav-link i,
+body.dl-light .sidebar .sidebar-footer .nav-link i {
+    background: none !important;
+    background-color: transparent !important;
+    -webkit-text-fill-color: unset !important;
+    transition: transform 0.2s ease !important;
+}
+
+/* Hover: darken text only, do NOT add bg to icon */
+body.dl-light .sidebar .sidebar-nav .nav .nav-link:hover {
+    color: #0f172a !important;
+    background: transparent !important;
+}
+
+body.dl-light .sidebar .sidebar-nav .nav .nav-link:hover i {
+    background: none !important;
+    background-color: transparent !important;
+    transform: scale(1.1);
+}
+
+/* Active link */
+body.dl-light .sidebar .sidebar-nav .nav .nav-link.active {
+    color: #6366f1 !important;
+    background: rgba(99, 102, 241, 0.06) !important;
+    font-weight: 600 !important;
+}
+
+body.dl-light .sidebar .sidebar-nav .nav .nav-link.active i {
+    background: none !important;
+    background-color: transparent !important;
+    transform: scale(1.1);
+}
+
+/* Bottom sidebar footer icons — same treatment */
+body.dl-light .sidebar .sidebar-footer .nav-link {
+    color: #475569 !important;
+    background: transparent !important;
+}
+
+body.dl-light .sidebar .sidebar-footer .nav-link:hover {
+    color: #0f172a !important;
+    background: transparent !important;
+}
+
+body.dl-light .sidebar .sidebar-footer .nav-link.active {
+    color: #6366f1 !important;
+    background: rgba(99, 102, 241, 0.06) !important;
+}
+
+/* Sidebar Branding in Light Mode */
+body.dl-light .sidebar .sidebar-logo .logo-big .text-primary {
+    background: linear-gradient(135deg, #6366f1 0%, #0ea5e9 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    font-weight: 800 !important;
+}
+
+/* Ensure card headers/titles are dark in light mode */
+body.dl-light .card-title,
+body.dl-light h1, body.dl-light h2, body.dl-light h3, body.dl-light h4, body.dl-light h5, body.dl-light h6 {
+    color: #0f172a !important;
+}
+
+/* Table fixes for light mode */
+body.dl-light .table {
+    color: #334155 !important;
+}
+body.dl-light .table thead th {
+    background-color: #f8fafc !important;
+    color: #475569 !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+body.dl-light .table td {
+    border-bottom: 1px solid #f1f5f9 !important;
+}
+
+/* ═══════════════════════════════════════════════
+   BOT BUILDER — LIGHT MODE ENHANCEMENTS
+   ═══════════════════════════════════════════════ */
+
+/* Hero Section — clean white with subtle border */
+body.dl-light .bb-hero-section,
+body.light .bb-hero-section {
+    background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 50%, #f0f9ff 100%) !important;
+    border: 1px solid rgba(99, 102, 241, 0.12) !important;
+    box-shadow: 0 4px 20px -5px rgba(99, 102, 241, 0.08) !important;
+}
+
+body.dl-light .bb-hero-inner,
+body.light .bb-hero-inner {
+    background: transparent !important;
+}
+
+body.dl-light .bb-hero-title,
+body.light .bb-hero-title {
+    color: #0f172a !important;
+}
+
+body.dl-light .bb-hero-desc,
+body.light .bb-hero-desc {
+    color: #475569 !important;
+}
+
+/* Stat Cards — white cards with subtle shadows */
+body.dl-light .bb-stat-card,
+body.light .bb-stat-card {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.06) !important;
+}
+
+body.dl-light .bb-stat-card .text-white-50,
+body.dl-light .bb-stat-card .fs-14,
+body.light .bb-stat-card .text-white-50,
+body.light .bb-stat-card .fs-14 {
+    color: #64748b !important;
+}
+
+body.dl-light .bb-stat-card .fw-bold,
+body.dl-light .bb-stat-card .fs-24,
+body.light .bb-stat-card .fw-bold,
+body.light .bb-stat-card .fs-24 {
+    color: #1e293b !important;
+}
+
+body.dl-light .bb-stat-card i,
+body.light .bb-stat-card i {
+    opacity: 0.8 !important;
+}
+
+/* Bot Cards — clean white with left accent */
+body.dl-light .bb-bot-card,
+body.light .bb-bot-card {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 2px 10px -3px rgba(0, 0, 0, 0.06) !important;
+}
+
+body.dl-light .bb-bot-card:hover,
+body.light .bb-bot-card:hover {
+    box-shadow: 0 8px 25px -5px rgba(99, 102, 241, 0.12) !important;
+    border-color: rgba(99, 102, 241, 0.3) !important;
+}
+
+body.dl-light .bb-bot-card a,
+body.dl-light .bb-bot-card .bb-bot-name,
+body.light .bb-bot-card a,
+body.light .bb-bot-card .bb-bot-name {
+    color: #0f172a !important;
+}
+
+body.dl-light .bb-bot-card .text-white-50,
+body.dl-light .bb-bot-card .text-muted,
+body.light .bb-bot-card .text-white-50,
+body.light .bb-bot-card .text-muted {
+    color: #64748b !important;
+}
+
+/* Bot Card Footer */
+body.dl-light .bb-bot-card-footer,
+body.light .bb-bot-card-footer {
+    background: #f8fafc !important;
+    border-top: 1px solid #e2e8f0 !important;
+}
+
+body.dl-light .bb-bot-date,
+body.dl-light .bb-bot-date i,
+body.light .bb-bot-date,
+body.light .bb-bot-date i {
+    color: #94a3b8 !important;
+}
+
+/* Bot Card Footer Action Buttons */
+body.dl-light .bb-bot-card-footer .btn,
+body.light .bb-bot-card-footer .btn {
+    color: #64748b !important;
+    border-color: #e2e8f0 !important;
+    background: #ffffff !important;
+}
+
+body.dl-light .bb-bot-card-footer .btn:hover,
+body.light .bb-bot-card-footer .btn:hover {
+    color: #6366f1 !important;
+    border-color: #6366f1 !important;
+    background: rgba(99, 102, 241, 0.06) !important;
+}
+
+/* Status Badges */
+body.dl-light .bb-bot-card .badge,
+body.light .bb-bot-card .badge {
+    border: 1px solid currentColor !important;
+}
+
+/* Bot Builder Buttons */
+body.dl-light .bb-btn-glass,
+body.light .bb-btn-glass {
+    background: rgba(99, 102, 241, 0.1) !important;
+    border-color: rgba(99, 102, 241, 0.3) !important;
+    color: #4f46e5 !important;
+}
+
+body.dl-light .bb-btn-glass:hover,
+body.light .bb-btn-glass:hover {
+    background: rgba(99, 102, 241, 0.18) !important;
+}
+
+/* Section Titles */
+body.dl-light .bb-section-title,
+body.dl-light .bb-section-title span,
+body.light .bb-section-title,
+body.light .bb-section-title span {
+    color: #1e293b !important;
+}
+
+/* Search box */
+body.dl-light .bb-search-box,
+body.light .bb-search-box {
+    background: #f8fafc !important;
+    border-color: #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+/* General — make all .text-white inside dark containers readable in light mode */
+body.dl-light .bb-hero-section .text-white,
+body.dl-light .bb-stat-card .text-white,
+body.dl-light .bb-bot-card .text-white,
+body.light .bb-hero-section .text-white,
+body.light .bb-stat-card .text-white,
+body.light .bb-bot-card .text-white {
+    color: #1e293b !important;
+}
+
+/* ─────────────────────────────────────────────
+   11. LIGHT MODE FORCE OVERRIDES (Fix UI Issues)
+   
+   ⚠️ IMPORTANT: These overrides must NOT affect elements
+   with gradient/colored backgrounds that use white text.
+   Use :not() selectors to exclude module-specific classes.
+   ───────────────────────────────────────────── */
+body.dl-light, 
+body.dl-light .main-wrapper,
+body.dl-light .sidebar-wrapper {
+    background: var(--dl-bg) !important;
+    color: var(--dl-text-primary) !important;
+}
+
+body.dl-light .sidebar {
+    background: #ffffff !important;
+    border-right: 1px solid var(--dl-border) !important;
+}
+
+body.dl-light .header {
+    background: #ffffff !important;
+    border-bottom: 1px solid var(--dl-border) !important;
+}
+
+/* Cards — exclude module gradient cards from white background override */
+body.dl-light .card:not(.wa-stat-card):not(.wa-stat-sent):not(.wa-stat-bulk):not(.wa-stat-auto):not(.wa-stat-chatbot):not(.slm-card):not(.wf-stat-card):not([style*="gradient"]):not([style*="background"]):not(.meta-stat-card) {
+    background: #ffffff !important;
+    border: 1px solid var(--dl-border) !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
+}
+
+body.dl-light .form-control,
+body.dl-light .form-select {
+    background-color: #ffffff !important;
+    color: var(--dl-text-primary) !important;
+    border-color: var(--dl-border) !important;
+}
+
+body.dl-light .text-muted {
+    color: var(--dl-text-muted) !important;
+}
+
+body.dl-light .text-white {
+    color: #fff !important;
+}
+
+/* Headings — exclude headings inside gradient/colored containers */
+body.dl-light h1, body.dl-light h2, body.dl-light h3, 
+body.dl-light h4, body.dl-light h5, body.dl-light h6 {
+    color: var(--dl-text-primary) !important;
+}
+
+/* ─────────────────────────────────────────────
+   12. GRADIENT/COLORED CONTAINER TEXT PROTECTION
+   
+   Ensures white text is preserved inside all 
+   module elements with colored/gradient backgrounds.
+   Applies to ALL admin pages globally.
+   ───────────────────────────────────────────── */
+
+/* ---- WhatsApp Analytics Stats Cards (report.php) ---- */
+.wa-stat-card,
+.wa-stat-card * {
+    color: #fff !important;
+}
+.wa-stat-card .wa-stat-label {
+    color: rgba(255,255,255,0.8) !important;
+}
+.wa-stat-card .wa-stat-meta {
+    color: rgba(255,255,255,0.7) !important;
+}
+.wa-stat-card .wa-stat-value {
+    color: #fff !important;
+}
+.wa-stat-card .wa-stat-icon i {
+    color: #fff !important;
+}
+.wa-stat-card .wa-pill {
+    color: #fff !important;
+    background: rgba(255,255,255,0.2) !important;
+}
+.wa-stat-card h1, .wa-stat-card h2, .wa-stat-card h3,
+.wa-stat-card h4, .wa-stat-card h5, .wa-stat-card h6 {
+    color: #fff !important;
+}
+
+/* Preserve gradient backgrounds on stat cards */
+.wa-stat-sent {
+    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%) !important;
+    box-shadow: 0 8px 24px rgba(99,102,241,0.25) !important;
+    border: none !important;
+}
+.wa-stat-bulk {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+    box-shadow: 0 8px 24px rgba(16,185,129,0.25) !important;
+    border: none !important;
+}
+.wa-stat-auto {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
+    box-shadow: 0 8px 24px rgba(245,158,11,0.25) !important;
+    border: none !important;
+}
+.wa-stat-chatbot {
+    background: linear-gradient(135deg, #ec4899 0%, #db2777 100%) !important;
+    box-shadow: 0 8px 24px rgba(236,72,153,0.25) !important;
+    border: none !important;
+}
+
+/* WhatsApp report cards text colors */
+.wa-card {
+    background: #fff !important;
+    border: 1px solid #f1f5f9 !important;
+}
+.wa-card-title {
+    color: #1e293b !important;
+}
+.wa-report-header h2 {
+    color: #1e293b !important;
+    -webkit-text-fill-color: #1e293b !important;
+    background: none !important;
+}
+.wa-dist-value {
+    color: #1e293b !important;
+}
+.wa-summary-item .wa-s-value {
+    color: #1e293b !important;
+}
+.wa-summary-item .wa-s-label {
+    color: #64748b !important;
+}
+.wa-btn-primary {
+    color: #fff !important;
+}
+.wa-btn-outline {
+    background: #fff !important;
+    color: #475569 !important;
+}
+.wa-btn-outline:hover {
+    color: #7c3aed !important;
+}
+
+/* ---- Social Lead Master Hero Section ---- */
+.slm-hero,
+.slm-hero * {
+    color: #fff !important;
+}
+.slm-hero h1, .slm-hero h2, .slm-hero h3,
+.slm-hero h4, .slm-hero h5, .slm-hero h6 {
+    color: #fff !important;
+    -webkit-text-fill-color: #fff !important;
+}
+.slm-hero p {
+    color: rgba(255,255,255,0.6) !important;
+}
+.slm-hero .slm-kpi-val {
+    color: #fff !important;
+}
+.slm-hero .slm-kpi-lbl {
+    color: rgba(255,255,255,0.6) !important;
+}
+.slm-hero .btn {
+    background: #fff !important;
+    color: #7c3aed !important;
+}
+/* Other Social Lead Master hero variants */
+.slm-src-hero, .slm-src-hero *,
+.slm-dh, .slm-dh *,
+.slm-setup-hero, .slm-setup-hero *,
+.slm-ie-hero, .slm-ie-hero *,
+.slm-map-hero, .slm-map-hero *,
+.slm-leads-bar, .slm-leads-bar * {
+    color: #fff !important;
+}
+.slm-src-hero h1, .slm-src-hero h2, .slm-src-hero h3,
+.slm-src-hero h4, .slm-src-hero h5, .slm-src-hero h6,
+.slm-dh h1, .slm-dh h2, .slm-dh h3,
+.slm-dh h4, .slm-dh h5, .slm-dh h6,
+.slm-setup-hero h1, .slm-setup-hero h2, .slm-setup-hero h3,
+.slm-setup-hero h4, .slm-setup-hero h5, .slm-setup-hero h6,
+.slm-ie-hero h1, .slm-ie-hero h2, .slm-ie-hero h3,
+.slm-ie-hero h4, .slm-ie-hero h5, .slm-ie-hero h6,
+.slm-map-hero h1, .slm-map-hero h2, .slm-map-hero h3,
+.slm-map-hero h4, .slm-map-hero h5, .slm-map-hero h6,
+.slm-leads-bar h1, .slm-leads-bar h2, .slm-leads-bar h3,
+.slm-leads-bar h4, .slm-leads-bar h5, .slm-leads-bar h6 {
+    color: #fff !important;
+    -webkit-text-fill-color: #fff !important;
+}
+/* SLM standard cards text in light mode */
+.slm-card-head {
+    color: #0f172a !important;
+}
+.slm-card .slm-card-body {
+    color: #334155 !important;
+}
+
+/* ---- WhatsApp Forms ---- */
+.wf-btn-create {
+    color: #fff !important;
+}
+.wf-page-title {
+    color: #0f172a !important;
+}
+.wf-page-subtitle {
+    color: #64748b !important;
+}
+.wf-stat-value {
+    color: #1e293b !important;
+}
+.wf-stat-label {
+    color: #8898aa !important;
+}
+.wf-form-title {
+    color: #0f172a !important;
+}
+.wf-empty-title {
+    color: #334155 !important;
+}
+.wf-empty-desc {
+    color: #64748b !important;
+}
+
+/* ---- WhatsApp Commerce Dashboard ---- */
+.wa-commerce-hero,
+.wa-commerce-hero * {
+    color: #fff !important;
+}
+
+/* ---- Meta API Dashboard ---- */
+.meta-dashboard .stat-card,
+.meta-dashboard .stat-card * {
+    /* Don't force colors on stat cards with gradient ::before */
+}
+
+/* ---- Buttons with inline gradient styles ---- */
+.btn[style*="gradient"] {
+    color: #fff !important;
+}
+.btn[style*="gradient"]:hover {
+    color: #fff !important;
+}
+
+/* ---- Modal headers with gradient backgrounds ---- */
+.modal-header[style*="gradient"],
+.modal-header[style*="gradient"] * {
+    color: #fff !important;
+}
+.modal-header[style*="gradient"] h1,
+.modal-header[style*="gradient"] h2,
+.modal-header[style*="gradient"] h3,
+.modal-header[style*="gradient"] h4,
+.modal-header[style*="gradient"] h5,
+.modal-header[style*="gradient"] h6 {
+    color: #fff !important;
+    -webkit-text-fill-color: #fff !important;
+}
+
+/* ---- Generic: Elements with inline colored backgrounds ---- */
+[style*="background:linear-gradient"] h1,
+[style*="background:linear-gradient"] h2,
+[style*="background:linear-gradient"] h3,
+[style*="background:linear-gradient"] h4,
+[style*="background:linear-gradient"] h5,
+[style*="background:linear-gradient"] h6,
+[style*="background: linear-gradient"] h1,
+[style*="background: linear-gradient"] h2,
+[style*="background: linear-gradient"] h3,
+[style*="background: linear-gradient"] h4,
+[style*="background: linear-gradient"] h5,
+[style*="background: linear-gradient"] h6 {
+    color: #fff !important;
+    -webkit-text-fill-color: #fff !important;
+}
+
+/* ---- IVR Calls, WaVoip, Special Leads hero sections ---- */
+.ivr-hero, .ivr-hero *,
+.wavoip-hero, .wavoip-hero *,
+.sp-lead-hero, .sp-lead-hero * {
+    color: #fff !important;
+}
+.ivr-hero h1, .ivr-hero h2, .ivr-hero h3,
+.ivr-hero h4, .ivr-hero h5, .ivr-hero h6,
+.wavoip-hero h1, .wavoip-hero h2, .wavoip-hero h3,
+.wavoip-hero h4, .wavoip-hero h5, .wavoip-hero h6,
+.sp-lead-hero h1, .sp-lead-hero h2, .sp-lead-hero h3,
+.sp-lead-hero h4, .sp-lead-hero h5, .sp-lead-hero h6 {
+    color: #fff !important;
+    -webkit-text-fill-color: #fff !important;
+}
+
+/* ---- Email Marketing hero ---- */
+.em-hero, .em-hero *,
+.em-hero-section, .em-hero-section * {
+    color: #fff !important;
+}
+.em-hero h1, .em-hero h2, .em-hero h3,
+.em-hero h4, .em-hero h5, .em-hero h6 {
+    color: #fff !important;
+    -webkit-text-fill-color: #fff !important;
+}
+
+/* ---- Bot Builder hero ---- */
+.bb-hero-section, .bb-hero-section *,
+.bb-stat-card, .bb-stat-card * {
+    color: #fff !important;
+}
+.bb-hero-section h1, .bb-hero-section h2, .bb-hero-section h3,
+.bb-hero-section h4, .bb-hero-section h5, .bb-hero-section h6,
+.bb-stat-card h1, .bb-stat-card h2, .bb-stat-card h3,
+.bb-stat-card h4, .bb-stat-card h5, .bb-stat-card h6 {
+    color: #fff !important;
+    -webkit-text-fill-color: #fff !important;
+}
+
+/* ---- CRM & Invoice hero sections ---- */
+.crm-hero, .crm-hero *,
+.inv-hero, .inv-hero * {
+    color: #fff !important;
+}
+
+/* ---- WhatsApp Single Message hero ---- */
+.wsm-header, .wsm-header * {
+    color: #fff !important;
+}
+.wsm-header h1, .wsm-header h2, .wsm-header h3,
+.wsm-header h4, .wsm-header h5, .wsm-header h6 {
+    color: #fff !important;
+    -webkit-text-fill-color: #fff !important;
+}
+
+/* ---- WhatsApp Template hero sections ---- */
+.wt-hero, .wt-hero *,
+.wtm-stat-card, .wtm-stat-card * {
+    color: #fff !important;
+}
+
+/* ---- Ensure proper text contrast in normal cards ---- */
+.wa-card .wa-card-header {
+    border-bottom: 1px solid #f8fafc !important;
+}
+.wa-table thead th {
+    color: #64748b !important;
+    background: #fafbfc !important;
+}
+.wa-table tbody td {
+    color: #334155 !important;
+}
+.wa-campaign-name {
+    color: #1e293b !important;
+}
+.wa-bot-name {
+    color: #1e293b !important;
+}
+.wa-bot-account {
+    color: #94a3b8 !important;
+}
+.wa-empty-state {
+    color: #94a3b8 !important;
+}

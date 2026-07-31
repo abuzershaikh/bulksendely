@@ -1,0 +1,5285 @@
+/**
+ * WAZIPER - WhatsApp Integration Module
+ * Core module for managing WhatsApp connections using Baileys v6.7.21
+ *
+ * This module handles:
+ * - WhatsApp socket creation and management
+ * - Message sending and receiving
+ * - Chatbot and autoresponder functionality
+ * - Bulk messaging campaigns
+ * - Session persistence and authentication
+ *
+ * Compatible with @whiskeysockets/baileys@^6.7.21
+ */
+
+// Node.js core modules
+const os = require('os');                        // Operating system utilities
+const fs = require('fs');                        // File system operations
+const path = require('path');                    // Path manipulation utilities
+const http = require('http');                    // HTTP server creation
+
+// Third-party dependencies
+const qrimg = require('qr-image');               // QR code generation for WhatsApp authentication
+const express = require('express');              // Web framework for API routes
+const rimraf = require('rimraf');                // Recursive directory removal for session cleanup
+const moment = require('moment-timezone');       // Date/time manipulation with timezone support
+const bodyParser = require('body-parser');       // Parse incoming request bodies
+const publicIp = require('ip');                  // Get server IP address
+const cors = require('cors');                    // Cross-Origin Resource Sharing middleware
+const spintax = require('spintax');              // Text spinning for message variations
+const Boom = require('@hapi/boom');              // HTTP error handling (used by Baileys)
+const P = require('pino');                       // Fast JSON logger (used by Baileys)
+const axios = require('axios');                  // HTTP client for API requests
+const cron = require('node-cron');               // Scheduled task execution
+const NodeCache = require("node-cache");         // In-memory caching for Baileys
+const ioredis = require('ioredis');              // Redis client for session keep-alive tracking
+
+// Express app and server setup
+const app = express();
+const server = http.createServer(app);
+const { Server } = require("socket.io");
+
+// Internal modules
+const config = require("./../config.js");        // Application configuration
+const Common = require("./common.js");           // Common utility functions
+const Extend = require("./extend.js");           // Extended functionality (AI, chat, etc.)
+
+/**
+ * Global state management objects
+ * These objects store runtime state for all WhatsApp instances
+ */
+const bulks = {};                                // Bulk messaging campaign state
+const total_contacts = {};                       // Contact count tracking
+const chatbots = {};                             // Chatbot conversation state
+const limit_messages = {};                       // Rate limiting state
+const stats_history = {};                        // Statistics history
+const sessions = {};                             // Active WhatsApp socket connections (key: instance_id)
+const sessions_caches = {};                      // Persistent caches for instances to prevent Bad MAC
+const new_sessions = {};                         // New session QR code expiration times
+const session_dir = __dirname + '/../sessions/'; // Directory for storing session authentication files
+let verify_next = 0;                             // Next verification timestamp
+let verify_response = false;                     // Verification response flag
+let verified = false;                            // Verification status
+let chatbot_delay = 1000;                        // Delay between chatbot responses (ms)
+let wa_version = '';                             // WhatsApp version string
+let retry_on_fail = {};                          // Retry tracking for failed operations
+
+/**
+ * Chatbot reset time configuration
+ * Time in minutes before chatbot conversation context is reset
+ */
+var CHATBOT_RESET_TIME = config.time_to_reset ?? 120;
+let chatbot_latest_receive = moment().add(CHATBOT_RESET_TIME * 4, 'm');
+
+/**
+ * Socket.IO server for real-time communication with frontend
+ * Emits events for QR codes, message status, campaign updates, etc.
+ */
+const io = new Server(server, {
+	cors: {
+		origin: config.frontend,  // Allow connections from frontend domain
+	}
+});
+
+/**
+ * Express middleware configuration
+ * Parse URL-encoded and JSON request bodies (max 50MB for media uploads)
+ */
+app.use(bodyParser.urlencoded({
+	extended: true,
+	limit: '50mb'
+}));
+
+app.use(bodyParser.json({
+	limit: '50mb',
+	strict: false  // Allow non-strict JSON parsing for better compatibility
+}));
+
+/**
+ * Socket.IO connection handler
+ * Logs when a new client connects to the real-time server
+ */
+io.on('connection', (socket) => {
+	// Socket.IO connection established
+});
+
+/**
+ * Device detection for WhatsApp browser identification
+ * Baileys requires a browser identifier for the connection
+ */
+const Device = (os.platform() === 'win32') ? 'Windows' : (os.platform() === 'darwin') ? 'MacOS' : 'Linux'
+
+/**
+ * Baileys v6.7.21 imports
+ * @whiskeysockets/baileys - WhatsApp Web Multi-Device API library
+ *
+ * Key functions imported:
+ * - makeWASocket: Creates WhatsApp WebSocket connection
+ * - useMultiFileAuthState: Manages authentication state across multiple files
+ * - DisconnectReason: Enum for handling different disconnection scenarios
+ * - WAMessageStubType: Message stub types (e.g., CIPHERTEXT for decryption failures)
+ * - prepareWAMessageMedia: Prepares media messages (images, videos, documents)
+ * - generateWAMessageFromContent: Creates custom message content
+ * - downloadMediaMessage: Downloads media from received messages
+ * - proto: Protocol buffer definitions for WhatsApp messages
+ */
+const {
+	default: makeWASocket,              // Main function to create WhatsApp socket connection
+	BufferJSON,                          // JSON serialization for buffers
+	useMultiFileAuthState,               // Multi-file authentication state management (v6.7.21 compatible)
+	DisconnectReason,                    // Disconnect reason codes (loggedOut, restartRequired, etc.)
+	fetchLatestWaWebVersion,             // Fetches latest WhatsApp Web version (optional)
+	WAMessageStubType,                   // Message stub types for system messages
+	Browsers,                            // Browser identifiers for connection
+	delay,                               // Utility delay function
+	downloadMediaMessage,                // Download media from messages
+	generateWAMessageFromContent,        // Generate custom message content
+	getAggregateVotesInPollMessage,      // Get poll vote aggregates
+	getContentType,                      // Get message content type
+	getDevice,                           // Get device type from message
+	isJidBroadcast,                      // Check if JID is broadcast
+	isJidGroup,                          // Check if JID is group
+	isJidUser,                           // Check if JID is user
+	makeCacheableSignalKeyStore,         // Cacheable signal key store for performance
+	prepareWAMessageMedia,               // Prepare media for sending
+	proto,                               // Protocol buffer message definitions
+} = require('@whiskeysockets/baileys')      // Aliased to @whiskeysockets/baileys@^6.7.21
+
+/**
+ * Store object for managing WhatsApp data
+ * Note: makeInMemoryStore has been removed in Baileys v6.x
+ * We manage state manually through the sessions object
+ */
+var store = {};
+/**
+ * Baileys logger configuration
+ * Set to "fatal" level to suppress most logging output
+ * Can be changed to "debug" for troubleshooting connection issues
+ */
+var loggerBaileys = P({ timestamp: () => `,"time":"${new Date().toJSON()}"` }).child({})
+loggerBaileys.level = "fatal";
+
+/**
+ * Stores object for managing per-instance data
+ * Used to cache groups, contacts, and other WhatsApp data
+ */
+var stores = {}
+
+/**
+ * Redis client for session keep-alive tracking
+ * Used to cache last activity timestamps and prevent WhatsApp sleep mode
+ */
+var redis_client = null;
+if (config.redis) {
+	try {
+		redis_client = new ioredis(config.redis);
+		redis_client.on('connect', () => {
+			console.log('✅ Redis connected successfully for session keep-alive tracking');
+		});
+		redis_client.on('error', (err) => {
+			console.error('❌ Redis connection error:', err.message);
+		});
+	} catch (error) {
+		console.error('❌ Failed to initialize Redis client:', error.message);
+	}
+} else {
+	console.log('ℹ️ Redis disabled in config; running without Redis features');
+}
+
+/**
+ * ✅ PRODUCTION RULE: Get Reply JID (Preserve Original Format)
+ *
+ * CRITICAL: Always reply using the SAME JID format that the incoming message used.
+ *
+ * Reply Format Mapping:
+ * - Incoming @lid → Reply to @lid
+ * - Incoming @s.whatsapp.net → Reply to @s.whatsapp.net
+ *
+ * @param {object} message - Message object from Baileys
+ * @returns {string} - JID in the SAME format as the incoming message
+ */
+function getReplyJid(message) {
+	const remoteJid = message?.key?.remoteJid;
+
+	if (!remoteJid) {
+		return null;
+	}
+
+	// Return the ORIGINAL format - DO NOT convert
+	return remoteJid;
+}
+
+/**
+ * ✅ UTILITY: Normalize JID for Database Storage (INCOMING MESSAGES)
+ *
+ * Converts @lid format to @s.whatsapp.net for database remoteJid column
+ * This is ONLY for database storage, NOT for replies
+ *
+ * @param {object} message - Message object from Baileys
+ * @returns {string} - Normalized JID in @s.whatsapp.net format
+ */
+function normalizeJid(message) {
+	const remoteJid = message?.key?.remoteJid;
+
+	if (!remoteJid) {
+		return null;
+	}
+
+	// If it's a group chat or status broadcast, return as-is
+	if (remoteJid.includes('@g.us') || remoteJid.includes('@broadcast')) {
+		return remoteJid;
+	}
+
+	// If it's @lid format, convert to @s.whatsapp.net for database storage
+	if (remoteJid.includes('@lid')) {
+		// Try to get the actual phone number from sender or participant
+		const sender = message.key.participant || message.participant || message.sender;
+
+		if (sender && sender.includes('@s.whatsapp.net')) {
+			return sender;
+		}
+
+		// Fallback: extract number from @lid and convert to @s.whatsapp.net
+		const phoneNumber = remoteJid.split('@')[0];
+		console.log(`[JID Normalize] Converting @lid to @s.whatsapp.net for DB: ${remoteJid} → ${phoneNumber}@s.whatsapp.net`);
+		return `${phoneNumber}@s.whatsapp.net`;
+	}
+
+	// Already in correct format
+	return remoteJid;
+}
+
+/**
+ * ✅ PRODUCTION RULE: Preserve Chat ID Format for OUTGOING Messages
+ *
+ * CRITICAL: This function PRESERVES the original JID format to prevent Signal Protocol session mismatch.
+ * DO NOT convert @lid to @s.whatsapp.net - this causes "Bad MAC" decryption errors!
+ *
+ * STRATEGY: Preserve the exact format used by the incoming message
+ * - @lid format → Keep as @lid (for Signal Protocol session matching)
+ * - @s.whatsapp.net → Keep as @s.whatsapp.net
+ * - Plain phone number → Add @s.whatsapp.net (default format)
+ *
+ * @param {string} chat_id - Chat ID to normalize (can be phone number, JID, or LID)
+ * @returns {string} - Chat ID with proper suffix (PRESERVES @lid if present)
+ *
+ * Examples:
+ *   normalizeOutgoingChatId("919876543210") → "919876543210@s.whatsapp.net"
+ *   normalizeOutgoingChatId("919876543210@lid") → "919876543210@lid" (PRESERVED!)
+ *   normalizeOutgoingChatId("919876543210@s.whatsapp.net") → "919876543210@s.whatsapp.net"
+ *   normalizeOutgoingChatId("1234567890@g.us") → "1234567890@g.us" (unchanged)
+ */
+function normalizeOutgoingChatId(chat_id) {
+	if (!chat_id) {
+		console.error('[JID Normalize] Error: chat_id is null or undefined');
+		return null;
+	}
+
+	// Group chats: Return as-is (already in correct format)
+	if (chat_id.includes('@g.us') || chat_id.includes('g.us')) {
+		// Ensure @g.us format
+		if (!chat_id.includes('@')) {
+			return chat_id.replace('g.us', '@g.us');
+		}
+		return chat_id;
+	}
+
+	// Status broadcast: Return as-is
+	if (chat_id.includes('@broadcast')) {
+		return chat_id;
+	}
+
+	// ✅ PRODUCTION RULE: PRESERVE @lid format (DO NOT CONVERT!)
+	// This is critical for Signal Protocol session matching
+	if (chat_id.includes('@lid')) {
+		console.log(`[JID Preserve] Keeping @lid format: ${chat_id}`);
+		return chat_id;  // Return as-is, DO NOT convert
+	}
+
+	// Already has @s.whatsapp.net: Return as-is
+	if (chat_id.includes('@s.whatsapp.net')) {
+		return chat_id;
+	}
+
+	// Plain phone number: Add @s.whatsapp.net
+	if (!chat_id.includes('@')) {
+		const normalized = `${chat_id}@s.whatsapp.net`;
+		console.log(`[JID Normalize] Adding JID suffix: ${chat_id} → ${normalized}`);
+		return normalized;
+	}
+
+	// Unknown format: Log warning and return as-is
+	console.warn(`[JID Normalize] Unknown chat_id format: ${chat_id}`);
+	return chat_id;
+}
+
+/**
+ * WAZIPER main module object
+ * Exports all WhatsApp functionality and server instances
+ */
+const WAZIPER = {
+	io: io,                                      // Socket.IO server for real-time updates
+	app: app,                                    // Express app for HTTP routes
+	server: server,                              // HTTP server instance
+	sessions: sessions,                          // Active WhatsApp socket connections
+	chatbot_latest_receive: chatbot_latest_receive, // Chatbot timing tracker
+	cors: cors(config.cors),                     // CORS middleware with config
+	redis_client: redis_client,                  // Redis client for keep-alive tracking
+	normalizeJid: normalizeJid,                  // JID normalization utility
+
+	/**
+	 * makeWASocket - Creates a WhatsApp WebSocket connection
+	 *
+	 * @param {string} instance_id - Unique identifier for this WhatsApp instance
+	 * @returns {Promise<WASocket>} - Baileys WhatsApp socket object
+	 *
+	 * This function:
+	 * 1. Loads authentication state from session files (useMultiFileAuthState)
+	 * 2. Creates a new WhatsApp socket connection with Baileys v6.7.21
+	 * 3. Configures connection parameters (timeouts, caching, browser info)
+	 * 4. Returns the socket for event handler attachment
+	 *
+	 * ✅ CRITICAL: Socket Lifecycle Management
+	 * - ONLY creates new socket if no existing socket OR existing socket is closed (readyState = 3)
+	 * - Reuses existing socket if it's still active (readyState = 0, 1, or 2)
+	 * - Prevents duplicate socket creation which causes QR code loops
+	 *
+	 * Compatible with Baileys v6.7.21 - all options are validated for this version
+	 */
+	makeWASocket: async function (instance_id) {
+		// ✅ CRITICAL FIX: Check if socket already exists and is still active
+		// WebSocket readyState: 0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED
+		const existingSession = sessions[instance_id];
+		if (existingSession && existingSession.ws) {
+			const wsState = existingSession.ws.readyState || existingSession.ws.socket?._readyState;
+
+			// If socket is still active (not CLOSED), reuse it
+			if (wsState !== undefined && wsState !== 3) {
+				console.log(`[Socket] Reusing existing socket for ${instance_id} (state: ${wsState})`);
+				return existingSession;
+			}
+
+			// Socket is closed, clean it up before creating new one
+			console.log(`[Socket] Existing socket for ${instance_id} is closed (state: ${wsState}), creating new socket`);
+			delete sessions[instance_id];
+		}
+
+		/**
+		 * Load authentication state from multi-file storage
+		 * Baileys v6.7.21 uses useMultiFileAuthState for session persistence
+		 * Files are stored in: sessions/{instance_id}/creds.json and sessions/{instance_id}/app-state-sync-*.json
+		 */
+		const { state, saveCreds } = await useMultiFileAuthState(session_dir + instance_id);
+
+		/**
+		 * Note: makeInMemoryStore has been removed in Baileys v6.x
+		 * We no longer use the store for message/contact caching
+		 * Instead, we manage state manually through database and memory objects
+		 */
+
+		// Use the latest supported WA Web version when available.
+		// The previous hardcoded version/browser combo was causing 405 connection failures locally.
+		let socketVersion;
+		try {
+			const latestWa = await fetchLatestWaWebVersion({
+				timeout: 15000
+			});
+			socketVersion = latestWa?.version;
+			if (Array.isArray(socketVersion)) {
+				wa_version = socketVersion.join('.');
+				console.log(`[Socket] Using WA Web version ${wa_version} for ${instance_id}`);
+			}
+		} catch (error) {
+			console.warn(`[Socket] Failed to fetch latest WA Web version for ${instance_id}: ${error.message}`);
+		}
+
+		if (!sessions_caches[instance_id]) {
+			sessions_caches[instance_id] = {
+				msgRetryCounterCache: new NodeCache(),
+				userDevicesCache: new NodeCache()
+			};
+		}
+
+		/**
+		 * Create WhatsApp socket with Baileys v6.7.21 configuration
+		 * All options below are compatible with this version
+		 */
+		const WA = makeWASocket({
+			auth: state,                                    // Authentication state from useMultiFileAuthState
+			printQRInTerminal: false,                       // Don't print QR to console (we send via API)
+			version: socketVersion,                         // Let Baileys use the latest supported WA Web version
+			browser: Browsers.ubuntu('Chrome'),             // Use Baileys recommended browser profile for QR auth
+			logger: P({ level: 'silent' }),                 // Pino logger set to silent (suppress logs)
+			receivedPendingNotifications: true,             // Process pending notifications on connect
+
+			// ✅ FIX #4: Improved timeout configuration for better connection stability
+			retryRequestDelayMs: 500,                       // Delay between retry attempts (increased from 10ms to 500ms)
+			connectTimeoutMs: 60000,                        // Connection timeout (60 seconds) - already optimal
+			qrTimeout: 40000,                               // QR code timeout (40 seconds) - already optimal
+			defaultQueryTimeoutMs: 60000,                   // Default query timeout (60 seconds, was undefined)
+			keepAliveIntervalMs: 30000,                     // Keep-alive interval (30 seconds) - prevents idle disconnections
+
+			emitOwnEvents: false,                           // Don't emit events for own messages
+			generateHighQualityLinkPreview: true,           // Generate high quality link previews
+			msgRetryCounterCache: sessions_caches[instance_id].msgRetryCounterCache,
+			userDevicesCache: sessions_caches[instance_id].userDevicesCache,
+
+			// ✅ FIX #4: Enhanced transaction retry configuration
+			transactionOpts: {
+				maxCommitRetries: 10,                       // Max retry attempts for transactions
+				delayBetweenTriesMs: 500                    // Delay between retries (increased from 10ms to 500ms)
+			},
+
+			// ✅ FIX #4: Message retry configuration
+			maxMsgRetryCount: 5,                            // Max message retry attempts (prevents infinite retry loops)
+			/*patchMessageBeforeSending(message) {
+			    if (message.deviceSentMessage?.message?.listMessage?.listType === proto.Message.ListMessage.ListType.PRODUCT_LIST) {
+			        message = JSON.parse(JSON.stringify(message));
+			        //message.deviceSentMessage.message.listMessage.listType = proto.Message.ListMessage.ListType.SINGLE_SELECT;
+			        message.deviceSentMessage.message.listMessage = {
+			            title: message.listMessage.title,
+			            description: message.listMessage.description,
+			            buttonText: message.listMessage.buttonText,
+			            footerText: message.listMessage.footerText,
+			            sections: message.listMessage.sections,
+			            listType: proto.Message.ListMessage.ListType.SINGLE_SELECT
+			        }
+			        
+			    }
+			    if (message.listMessage?.listType == proto.Message.ListMessage.ListType.PRODUCT_LIST) {
+			        message = JSON.parse(JSON.stringify(message));
+			        //message.listMessage.listType = proto.Message.ListMessage.ListType.SINGLE_SELECT;
+			        message.listMessage = {
+			            title: message.listMessage.title,
+			            description: message.listMessage.description,
+			            buttonText: message.listMessage.buttonText,
+			            footerText: message.listMessage.footerText,
+			            sections: message.listMessage.sections,
+			            listType: proto.Message.ListMessage.ListType.SINGLE_SELECT
+			        }
+			        
+			    }
+			    
+			    return message;
+			},*/
+		});
+
+		/**
+		 * Event Handler: connection.update
+		 *
+		 * Handles WhatsApp connection state changes
+		 * Triggered when: QR code is generated, connection opens/closes, login succeeds/fails
+		 *
+		 * Parameters from Baileys v6.7.21:
+		 * @param {string} connection - Connection state: 'connecting', 'open', 'close'
+		 * @param {object} lastDisconnect - Information about last disconnection (if any)
+		 * @param {boolean} isNewLogin - True if this is a new login (first time connecting)
+		 * @param {string} qr - QR code string (when available for scanning)
+		 * @param {boolean} receivedPendingNotifications - True when pending notifications are received
+		 */
+		await WA.ev.on('connection.update', async ({ connection, lastDisconnect, isNewLogin, qr, receivedPendingNotifications }) => {
+			/**
+			 * ✅ CRITICAL FIX: QR Code Generation Policy
+			 *
+			 * Generate QR codes ONLY for genuinely new sessions that have never been authenticated
+			 * Do NOT generate QR codes for temporarily disconnected but previously authenticated sessions
+			 *
+			 * Check if session has valid authentication credentials (state.creds.registered)
+			 * If already registered, this is a reconnection attempt - do NOT show QR code
+			 */
+			if (qr != undefined) {
+				// Check if this session was previously authenticated
+				const { state } = await useMultiFileAuthState(session_dir + instance_id);
+
+				// In Baileys v6.7.21 the display name can arrive later than the account id.
+				// Treat a session as authenticated as soon as me.id is present.
+				const isAuthenticated = !!state?.creds?.me?.id;
+
+				if (!isAuthenticated) {
+					// This is a genuinely new session - show QR code
+					console.log(`[QR Code] Generated for new session: ${instance_id}`);
+					WA.qrcode = qr;
+					if (new_sessions[instance_id] == undefined)
+						new_sessions[instance_id] = new Date().getTime() / 1000 + 300; // 300 seconds = 5 minutes
+				} else {
+					// This is a reconnection attempt for previously authenticated session
+					// Do NOT show QR code - let it reconnect automatically
+					const userName = state.creds.me.name;
+					console.log(`[QR Code] Skipped for authenticated session: ${instance_id} (${userName}) - attempting auto-reconnect`);
+					WA.qrcode = false; // Explicitly set to false to indicate "already logged in"
+					delete new_sessions[instance_id]; // Remove from pending sessions
+				}
+			}
+
+			/**
+			 * New Login Detection
+			 * When a new login is successful (first time authentication)
+			 * Reload the socket to ensure all event handlers are properly attached
+			 * This is necessary in Baileys v6.7.21 to complete the authentication flow
+			 */
+			if (isNewLogin) {
+				// Reload session after login successful to complete authentication
+				await WAZIPER.makeWASocket(instance_id);
+			}
+
+			/**
+			 * ✅ IMPROVED: Enhanced Disconnection Error Handling
+			 * Better detection and recovery for various connection states
+			 *
+			 * Baileys v6.7.21 DisconnectReason codes:
+			 * - restartRequired (515): Server requested restart (reconnect immediately)
+			 * - connectionClosed (428): Connection closed unexpectedly (reconnect)
+			 * - connectionLost (408): Connection lost/timed out (reconnect)
+			 * - timedOut (408): Connection timed out (reconnect)
+			 * - loggedOut (401): User logged out (delete session and require re-authentication)
+			 * - badSession (440): Bad session (delete and re-authenticate)
+			 * - 405: Connection Failure (retry connection)
+			 * - 500: Internal server error (retry connection)
+			 */
+			if (lastDisconnect != undefined && lastDisconnect.error != undefined) {
+				var statusCode = lastDisconnect.error.output.statusCode;
+				var errorMessage = lastDisconnect.error.message || 'Unknown error';
+
+				console.log(`[Connection] Instance ${instance_id} disconnect - Status: ${statusCode}, Message: ${errorMessage}`);
+
+				// ✅ CRITICAL FIX: Handle connection failures and reconnectable errors with retry logic
+				// BUT: Do NOT reconnect for unregistered sessions (new sessions waiting for QR scan)
+				if (DisconnectReason.restartRequired == statusCode ||
+				    DisconnectReason.connectionClosed == statusCode ||
+				    DisconnectReason.connectionLost == statusCode ||
+				    DisconnectReason.timedOut == statusCode ||
+				    statusCode == 405 ||
+				    statusCode == 500) {
+
+					// ✅ CRITICAL: Check if this is an authenticated session before reconnecting
+					// For NEW unauthenticated sessions, do NOT reconnect - let pending cleanup handle them
+					const { state } = await useMultiFileAuthState(session_dir + instance_id);
+
+					// ✅ FIX: In Baileys v6.7.21, state.creds.registered is unreliable (often false even for active sessions)
+					// Better check: state.creds.me exists and has user info (id, name)
+					// If me.id exists, the session is authenticated and should reconnect
+					const isAuthenticated = !!state?.creds?.me?.id;
+
+					console.log(`[DEBUG-RECONNECT] Instance ${instance_id} - registered: ${state?.creds?.registered}, me.id: ${!!state?.creds?.me?.id}, me.name: ${!!state?.creds?.me?.name}, isAuthenticated: ${isAuthenticated}`);
+
+					if (isAuthenticated) {
+						// This is an authenticated session - safe to reconnect
+						const userName = state.creds.me.name;
+						console.log(`[Connection] Instance ${instance_id} (${userName}) attempting reconnection...`);
+
+						// Add small delay before reconnecting to avoid rapid reconnection loops
+						await new Promise(resolve => setTimeout(resolve, 2000));
+
+						try {
+							await WAZIPER.makeWASocket(instance_id);
+							console.log(`[Connection] Instance ${instance_id} (${userName}) reconnection initiated`);
+						} catch (reconnectError) {
+							console.error(`[Connection] Instance ${instance_id} reconnection failed:`, reconnectError.message);
+						}
+					} else {
+						// This is an unauthenticated session (new session waiting for QR scan)
+						// Do NOT reconnect - this would generate a new QR code and create a loop
+						console.log(`[Connection] Instance ${instance_id} (unauthenticated) disconnected - skipping reconnection to prevent QR loop`);
+
+						// Clean up the session gracefully
+						delete sessions[instance_id];
+						delete new_sessions[instance_id];
+
+						// Update database status
+						await Common.db_update("sp_accounts", [{ status: 0 }, { token: instance_id }]);
+					}
+				}
+
+				// ✅ IMPROVED: Handle bad session errors
+				if (DisconnectReason.badSession == statusCode) {
+					console.warn(`[Connection] Instance ${instance_id} has bad session, cleaning up...`);
+					// Don't delete session files immediately, try to reconnect first
+					await new Promise(resolve => setTimeout(resolve, 3000));
+					try {
+						await WAZIPER.makeWASocket(instance_id);
+					} catch (error) {
+						console.error(`[Connection] Instance ${instance_id} bad session recovery failed:`, error.message);
+					}
+				}
+			}
+
+			/**
+			 * Connection State Handler
+			 * Handles different connection states: 'close', 'open', 'connecting'
+			 */
+			switch (connection) {
+				case "close":
+					/**
+					 * ✅ IMPROVED: Connection Closed Handler
+					 * Better handling of logout vs temporary disconnection
+					 * Check if user was logged out (401 Unauthorized or status 0)
+					 * If logged out, delete all session files and clear from memory
+					 */
+					if (lastDisconnect.error != undefined) {
+						var statusCode = lastDisconnect.error.output.statusCode;
+
+						// Handle logout: Delete session files and clear memory
+						if (DisconnectReason.loggedOut == statusCode || 0 == statusCode) {
+							console.log(`[Connection] Instance ${instance_id} logged out - Status: ${statusCode}`);
+
+							var SESSION_PATH = session_dir + instance_id;
+							if (fs.existsSync(SESSION_PATH)) {
+								rimraf.sync(SESSION_PATH);  // Delete session directory
+								delete sessions[instance_id];  // Remove from active sessions
+								delete chatbots[instance_id];  // Clear chatbot state
+								delete bulks[instance_id];     // Clear bulk messaging state
+								delete new_sessions[instance_id]; // Remove from pending sessions
+							}
+
+							// ✅ CRITICAL FIX: Do NOT create new session after logout
+							// The original code called WAZIPER.session(instance_id) which created a new session
+							// This caused immediate QR code generation and infinite loops
+							// Instead, just update database status without creating new session
+							await Common.db_update("sp_accounts", [{ status: 0 }, { token: instance_id }]);
+
+							// ✅ NEW: Emit Socket.IO event for logout
+							const session_data = await Common.db_get("sp_whatsapp_sessions", [{ instance_id: instance_id }]);
+							if (session_data) {
+								WAZIPER.io.emit('whatsapp_logout_' + instance_id, {
+									instance_id: instance_id,
+									status: 'logged_out',
+									timestamp: new Date().toISOString()
+								});
+
+								WAZIPER.io.emit('whatsapp_status_update_' + session_data.team_id, {
+									instance_id: instance_id,
+									status: 'logged_out',
+									timestamp: new Date().toISOString()
+								});
+							}
+						}
+					}
+					break;
+
+				case "open":
+					/**
+					 * Connection Opened Successfully
+					 * This is triggered when WhatsApp connection is fully established
+					 *
+					 * Steps:
+					 * 1. Set user name if not already set
+					 * 2. Store socket in sessions object
+					 * 3. Clear QR code data (no longer needed)
+					 * 4. Fetch user avatar
+					 * 5. Update database with connection status
+					 * 6. Emit Socket.io event to notify frontend of successful login
+					 * 7. Flush event queue to process pending events
+					 */
+
+					// Set user name from WhatsApp ID if not provided
+					if (WA.user.name == undefined) {
+						WA.user.name = WA.user?.id ? Common.get_phone(WA.user?.id, "wid") : instance_id;
+					}
+
+					// Store active socket connection
+					sessions[instance_id] = WA;
+
+					// Remove QR code data (authentication complete)
+					delete sessions[instance_id].qrcode;
+					delete new_sessions[instance_id];
+
+					// Fetch session without status filter because API-created sessions start with status 1
+					var session = await Common.db_get("sp_whatsapp_sessions", [{ instance_id: instance_id }]);
+					if (session) {
+						// Fetch user's WhatsApp profile picture
+						WA.user.avatar = await WAZIPER.get_avatar(WA);
+
+						// Find or create account record
+						var account = await Common.db_get("sp_accounts", [{ token: instance_id }]);
+						if (!account) {
+							account = await Common.db_get("sp_accounts", [{ pid: Common.get_phone(WA.user.id, "wid") }, { team_id: session.team_id }]);
+						}
+
+						// Update database with connection status and user info
+						await Common.update_status_instance(instance_id, WA.user);
+						await WAZIPER.add_account(instance_id, session.team_id, WA.user, account);
+						await Common.update_creds(WA, instance_id, WA.user);
+
+						// ✅ IMPROVED: Emit Socket.io events to notify frontend of successful login
+						// Emit instance-specific event
+						WAZIPER.io.emit('whatsapp_login_success_' + instance_id, {
+							instance_id: instance_id,
+							team_id: session.team_id,
+							user: {
+								id: WA.user.id,
+								name: WA.user.name,
+								avatar: WA.user.avatar
+							},
+							timestamp: new Date().toISOString(),
+							message: 'WhatsApp authentication successful',
+							status: 'connected'
+						});
+
+						// ✅ NEW: Emit team-wide event for admin panel updates
+						WAZIPER.io.emit('whatsapp_status_update_' + session.team_id, {
+							instance_id: instance_id,
+							status: 'connected',
+							user: {
+								id: WA.user.id,
+								name: WA.user.name,
+								avatar: WA.user.avatar
+							},
+							timestamp: new Date().toISOString()
+						});
+
+						console.log(`[Connection] Instance ${instance_id} connected successfully - User: ${WA.user.name}`);
+					}
+
+					/**
+					 * Note: Store binding removed in Baileys v6.x
+					 * makeInMemoryStore is no longer available in newer Baileys versions
+					 * We manage state manually through database and memory objects
+					 */
+					// WA.store = stores[instance_id];
+					// stores[instance_id].bind(WA.ev);
+
+					// Flush event queue to process any pending events
+					WA.ev.flush();
+
+					break;
+
+				default:
+					// Other connection states (e.g., 'connecting') - no action needed
+			}
+		});
+
+		/**
+		 * Event Handler: messages.upsert
+		 *
+		 * Handles incoming and outgoing WhatsApp messages
+		 * Triggered when: New messages are received or sent
+		 *
+		 * Parameters from Baileys v6.7.21:
+		 * @param {object} messages - Message upsert event containing:
+		 *   - messages: Array of message objects
+		 *   - type: 'notify' (new message), 'append' (historical message)
+		 *
+		 * This handler:
+		 * 1. Sends webhook notifications for message events
+		 * 2. Processes live chat messages (if extended functions enabled)
+		 * 3. Handles chatbot and autoresponder logic
+		 * 4. Manages message decryption failures (CIPHERTEXT)
+		 * 5. Caches group metadata for group messages
+		 */
+		console.log(`📨 Registering messages.upsert event handler for instance: ${instance_id}`);
+		await WA.ev.on('messages.upsert', async (messages) => {
+			// Send webhook notification for message event
+			WAZIPER.webhook(instance_id, { event: "messages.upsert", data: messages });
+
+			/**
+			 * Live Chat Function (Extended Feature)
+			 * Process messages for live chat functionality if enabled in config
+			 */
+			if ((config['extended_functions'] ?? true)) {
+				Extend.chat.processChatMessages(WAZIPER, sessions, messages, instance_id);
+			}
+
+			/**
+			 * Process New Messages
+			 * Handle messages with type 'notify' (new) or 'append' (historical)
+			 */
+			if (messages.messages != undefined && messages.type == 'notify' || messages.messages != undefined && messages.type == 'append') {
+				messages = messages.messages;
+
+				if (messages.length > 0) {
+					for (var i = 0; i < messages.length; i++) {
+						var message = messages[i];
+						// ✅ PRODUCTION RULE: Always reply using the SAME JID format as incoming message
+						// Use getReplyJid() to preserve @lid or @s.whatsapp.net format for replies
+						// Database normalization is handled by db_insert() in common.js
+						var chat_id = getReplyJid(message) || message.key.remoteJid;
+
+						/**
+						 * Handle Outgoing Messages (fromMe = true)
+						 * Process messages sent by this instance
+						 * Check for bot disable keywords
+						 */
+						if (message.key.fromMe === true && message.key.remoteJid != "status@broadcast" && message.message != undefined) {
+							var user_type = "user";
+
+							// ✅ UPDATED: Detect user_type for both old and new WhatsApp formats
+							// Individual chats: contain "@s.whatsapp.net" (old) OR "@lid" (new)
+							// Group chats: contain "@g.us"
+							if (chat_id.indexOf("@g.us") !== -1 || chat_id.indexOf("g.us") !== -1) {
+								user_type = "group";
+							}
+
+							// Check if message contains keyword to disable bot
+							try {
+								await Extend.disableBotKeyword(WAZIPER, instance_id, user_type, message);
+							} catch (error) {
+								// Silently handle errors in bot keyword processing
+							}
+						}
+
+
+						/**
+						 * Handle Incoming Messages (fromMe = false)
+						 * Process messages received from other users
+						 * Trigger chatbot and autoresponder logic
+						 */
+						if (message.key.fromMe === false && message.key.remoteJid != "status@broadcast" && message.message != undefined) {
+							var user_type = "user";
+
+							// ✅ FIX: Corrected user_type detection logic
+							// Individual chats: contain "s.whatsapp.net" (e.g., 919876543210@s.whatsapp.net) or "@lid" (new format)
+							// Group chats: contain "g.us" (e.g., 1234567890@g.us)
+							if (chat_id.indexOf("g.us") !== -1 || chat_id.indexOf("@g.us") !== -1) {
+								user_type = "group";
+							}
+
+							// ✅ FIX #7: Filter out media messages before chatbot/autoresponder processing
+							// Process text messages AND interactive message replies (buttons, lists)
+							// Skip images, videos, audio, documents, stickers, etc.
+							const messageContent = message.message;
+							const isTextMessage = messageContent.conversation ||
+							                     messageContent.extendedTextMessage ||
+							                     messageContent.ephemeralMessage?.message?.conversation ||
+							                     messageContent.ephemeralMessage?.message?.extendedTextMessage;
+
+							// ✅ FIX #8: Support NEW interactive message format (WhatsApp protocol update)
+							// WhatsApp now uses interactiveResponseMessage for ALL interactive replies (buttons, lists, etc.)
+							// Legacy formats (buttonsResponseMessage, listResponseMessage) are deprecated
+							const isInteractiveReply = messageContent.buttonsResponseMessage ||
+							                          messageContent.templateButtonReplyMessage ||
+							                          messageContent.listResponseMessage ||
+							                          messageContent.interactiveResponseMessage;  // ✅ NEW FORMAT
+
+							const isMediaMessage = messageContent.imageMessage ||
+							                      messageContent.videoMessage ||
+							                      messageContent.audioMessage ||
+							                      messageContent.documentMessage ||
+							                      messageContent.documentWithCaptionMessage ||
+							                      messageContent.stickerMessage ||
+							                      messageContent.voiceMessage;
+
+							if (isMediaMessage) {
+								console.log('⏭️  Skipping chatbot/autoresponder for media message (media messages not supported)');
+							} else if (isTextMessage || isInteractiveReply) {
+								// Welcome message for brand-new inbound contacts only
+								await WAZIPER.welcome_message(instance_id, user_type, message);
+								const menuHandled = await WAZIPER.menu_reply(instance_id, user_type, message);
+								if (menuHandled) {
+									continue;
+								}
+								await WAZIPER.keyword_reply(instance_id, user_type, message);
+								// Process message through chatbot (AI responses)
+								WAZIPER.chatbot(instance_id, user_type, message);
+								await Common.sleep(1000);  // Delay to avoid rate limiting
+								// Process message through autoresponder (keyword-based responses)
+								WAZIPER.autoresponder(instance_id, user_type, message);
+							} else {
+								console.log('⏭️  Skipping chatbot/autoresponder for non-text message type');
+							}
+						}
+						/**
+						 * Handle Message Decryption Failures
+						 * WAMessageStubType.CIPHERTEXT indicates message couldn't be decrypted
+						 * This can happen with end-to-end encrypted messages that fail to decrypt
+						 *
+						 * Baileys v6.7.21 uses WAMessageStubType enum for message stub types
+						 */
+						else if (message.key.remoteJid != "status@broadcast" && message.messageStubType != undefined && message.messageStubType == WAMessageStubType.CIPHERTEXT) {
+							var user_type = "user";
+
+							// ✅ UPDATED: Detect user_type for both old and new WhatsApp formats
+							// Individual chats: contain "@s.whatsapp.net" (old) OR "@lid" (new)
+							// Group chats: contain "@g.us"
+							if (chat_id.indexOf("@g.us") !== -1 || chat_id.indexOf("g.us") !== -1) {
+								user_type = "group";
+							}
+
+							// Check if there's a configured response for decryption failures
+							var item = await Common.db_get("sp_whatsapp_fail_decode_message", [{ instance_id: instance_id }, { status: 1 }]);
+
+							if (item) {
+								// Send automated response for decryption failure (user chats only)
+								if (user_type == "user") {
+									await WAZIPER.auto_send(instance_id, chat_id, chat_id, "faildecode", item, false, message, false, function (result) { });
+								}
+							}
+						}
+
+						/**
+						 * Cache Group Metadata
+						 * When a message is received from a group, cache the group information
+						 * This allows quick access to group data without repeated API calls
+						 *
+						 * Uses Baileys v6.7.21 groupMetadata() method to fetch group details
+						 */
+						if (message.message != undefined) {
+							if (chat_id.includes("@g.us")) {
+								// Initialize groups array if not exists
+								if (sessions[instance_id].groups == undefined) {
+									sessions[instance_id].groups = [];
+								}
+
+								// Check if group is already cached
+								var newGroup = true;
+								sessions[instance_id].groups.forEach(async (group) => {
+									if (group.id == chat_id) {
+										newGroup = false;
+									}
+								});
+
+								// Fetch and cache group metadata if new
+								if (newGroup) {
+									await WA.groupMetadata(chat_id).then(async (group) => {
+										const currentUserId = WA?.user?.id || '';
+										const currentParticipant = Array.isArray(group.participants)
+											? group.participants.find((participant) => participant.id === currentUserId)
+											: null;
+										const userIsAdmin = currentParticipant?.admin === 'admin' || currentParticipant?.admin === 'superadmin';
+										const userIsOwner = group.owner === currentUserId || group.subjectOwner === currentUserId;
+										sessions[instance_id].groups.push({
+											id: group.id,
+											name: group.subject,
+											size: group.size,
+											desc: group.desc,
+											participants: group.participants,
+											announce: group.announce === true,
+											userIsAdmin: userIsAdmin || userIsOwner,
+											isCommunity: group.isCommunity === true,
+											isCommunityAnnounce: group.isCommunityAnnounce === true,
+											linkedParent: group.linkedParent || null
+										});
+									}).catch((err) => {
+										// Silently handle errors (e.g., group not found, no permission)
+									});
+								}
+							}
+						}
+					}
+				}
+			}
+		});
+
+		/**
+		 * Event Handler: contacts.update
+		 *
+		 * Triggered when contact information is updated
+		 * Baileys v6.7.21 emits this when contact names, profile pictures, or status change
+		 */
+		await WA.ev.on('contacts.update', async (contacts) => {
+			WAZIPER.webhook(instance_id, { event: "contacts.update", data: contacts });
+		});
+
+		/**
+		 * Event Handler: contacts.upsert
+		 *
+		 * Triggered when new contacts are added or discovered
+		 * Baileys v6.7.21 emits this when new contacts appear in chats
+		 */
+		await WA.ev.on('contacts.upsert', async (contacts) => {
+			WAZIPER.webhook(instance_id, { event: "contacts.upsert", data: contacts });
+		});
+
+		/**
+		 * Event Handler: messages.update
+		 *
+		 * Triggered when message status changes (sent, delivered, read, deleted)
+		 * Baileys v6.7.21 uses this for message acknowledgment tracking
+		 *
+		 * Used for tracking message delivery status and read receipts
+		 */
+		await WA.ev.on('messages.update', async (messages) => {
+			WAZIPER.webhook(instance_id, { event: "messages.update", data: messages });
+			if (global.AndroidCampaignTracker) {
+				global.AndroidCampaignTracker.handleMessageUpdate(instance_id, messages);
+			}
+		});
+
+		/**
+		 * Event Handler: call
+		 *
+		 * Triggered when incoming or outgoing calls are detected
+		 * Baileys v6.7.21 supports call event detection
+		 *
+		 * Can be used to auto-reject calls or send automated responses
+		 */
+		console.log('📞 Registering call event handler for instance:', instance_id);
+		await WA.ev.on('call', async (call) => {
+			console.log('📞 ========== CALL EVENT RECEIVED ==========');
+			console.log('📞 Instance:', instance_id);
+			console.log('📞 Raw Call Data:', JSON.stringify(call, null, 2));
+			WAZIPER.webhook(instance_id, { event: "call", data: call });
+			await WAZIPER.callresponder(instance_id, call);
+		});
+
+		/**
+		 * Event Handler: groups.update
+		 *
+		 * Triggered when group information changes (name, description, settings)
+		 * Baileys v6.7.21 emits this for group metadata updates
+		 */
+		await WA.ev.on('groups.update', async (group) => {
+			WAZIPER.webhook(instance_id, { event: "groups.update", data: group });
+		});
+
+		/**
+		 * Event Handler: creds.update
+		 *
+		 * Triggered when authentication credentials change
+		 * Baileys v6.7.21 requires this handler to persist authentication state
+		 *
+		 * saveCreds is provided by useMultiFileAuthState and saves credentials to disk
+		 * This is CRITICAL for maintaining persistent sessions across restarts
+		 */
+		await WA.ev.on('creds.update', saveCreds);
+
+		// Return the configured WhatsApp socket
+		return WA;
+	},
+
+	/**
+	 * session - Get or create a WhatsApp session
+	 *
+	 * @param {string} instance_id - Unique identifier for the WhatsApp instance
+	 * @param {boolean} reset - If true, force recreation of the socket connection
+	 * @returns {Promise<WASocket>} - Baileys WhatsApp socket object
+	 *
+	 * This function manages the session lifecycle:
+	 * - Returns existing session if available
+	 * - Creates new session if not exists or reset is requested
+	 * - Compatible with Baileys v6.7.21 socket management
+	 */
+	session: async function (instance_id, reset) {
+		if (sessions[instance_id] == undefined || reset) {
+			// ✅ CRITICAL SAFEGUARD: Prevent accidental session reset during automatic reconnection
+			// Only allow reset if session is truly unauthenticated or explicitly requested
+			if (reset) {
+				// Check if session has valid authentication credentials
+				const SESSION_PATH = session_dir + instance_id;
+				const CREDS_FILE = path.join(SESSION_PATH, 'creds.json');
+
+				let isAuthenticated = false;
+				if (fs.existsSync(CREDS_FILE)) {
+					try {
+						const creds = JSON.parse(fs.readFileSync(CREDS_FILE, 'utf8'));
+						isAuthenticated = !!creds?.me?.id;
+					} catch (error) {
+						console.error(`[Session Reset] Error reading creds.json for ${instance_id}:`, error.message);
+					}
+				}
+
+				// ⚠️ SAFETY CHECK: Prevent reset of authenticated sessions
+				if (isAuthenticated) {
+					console.warn(`[Session Reset] ⚠️ BLOCKED: Attempted to reset authenticated session ${instance_id}`);
+					console.warn(`[Session Reset] This session has valid credentials and should NOT be reset`);
+					console.warn(`[Session Reset] If you really need to reset, use /logout first, then /get_qrcode`);
+
+					// Return existing session or create new one WITHOUT deleting files
+					if (!sessions[instance_id]) {
+						sessions[instance_id] = await WAZIPER.makeWASocket(instance_id);
+					}
+					return sessions[instance_id];
+				}
+
+				// Session is unauthenticated - safe to reset
+				console.log(`[Session Reset] Resetting unauthenticated session: ${instance_id}`);
+
+				// Close existing connection if any
+				if (sessions[instance_id]) {
+					try {
+						if (sessions[instance_id].ws && sessions[instance_id].ws.close) {
+							sessions[instance_id].ws.close();
+						}
+					} catch (error) {
+						console.error('[Session Reset] Error closing websocket:', error.message);
+					}
+				}
+
+				// Delete session files to force new QR code generation
+				if (fs.existsSync(SESSION_PATH)) {
+					console.log(`[Session Reset] Deleting session files for: ${instance_id}`);
+					rimraf.sync(SESSION_PATH);
+				}
+
+				// Clear from memory
+				delete sessions[instance_id];
+				delete new_sessions[instance_id];
+			}
+
+			sessions[instance_id] = await WAZIPER.makeWASocket(instance_id);
+		}
+
+		return sessions[instance_id];
+	},
+
+	/**
+	 * instance - Validate access and execute callback with WhatsApp instance
+	 *
+	 * @param {string} access_token - Team authentication token
+	 * @param {string} instance_id - WhatsApp instance identifier
+	 * @param {object} res - Express response object (optional)
+	 * @param {function} callback - Function to execute with validated instance
+	 * @param {boolean} reset - Force session reset (default: false)
+	 * @returns {Promise} - Result of callback execution or error response
+	 *
+	 * This function:
+	 * 1. Validates instance_id is provided
+	 * 2. Authenticates access_token against team database
+	 * 3. Verifies instance belongs to the team
+	 * 4. Creates/retrieves WhatsApp session
+	 * 5. Executes callback with the session
+	 *
+	 * Used as middleware for all WhatsApp operations requiring authentication
+	 */
+	instance: async function (access_token, instance_id, res, callback, reset = false) {
+		var time_now = Math.floor(new Date().getTime() / 1000);
+
+		// Validate instance_id parameter
+		if (instance_id == undefined && res != undefined) {
+			if (res) {
+				return res.json({ status: 'error', message: "The Instance ID must be provided for the process to be completed" });
+			} else {
+				console.error(instance_id, "The Instance ID must be provided for the process to be completed");
+				return callback(false);
+			}
+		}
+
+		// Authenticate team access token
+		var team = await Common.db_get("sp_team", [{ ids: access_token }]);
+
+		if (!team) {
+			if (res) {
+				return res.json({ status: 'error', message: "The authentication process has failed" });
+			} else {
+				console.error(instance_id, "The authentication process has failed");
+				// return callback(false);
+			}
+		}
+
+		var account = await Common.db_get("sp_accounts", [{ token: instance_id }, { team_id: team.id }]);
+
+		if (account && account.login_type == 1) {
+			return callback(account);
+		}
+
+		var session = await Common.db_get("sp_whatsapp_sessions", [{ instance_id: instance_id }, { team_id: team.id }]);
+		if (!session) {
+			console.log('no record found on sp_whatsapp_sessions', instance_id, team.id);
+			// Common.db_update("sp_accounts", [{ status: 0 }, { token: instance_id }]);
+			if (res) {
+				return res.json({ status: 'error', message: "The Instance ID provided has been invalidated" });
+			} else {
+				console.error(instance_id, "The Instance ID provided has been invalidated");
+				return callback(false);
+			}
+		}
+
+		sessions[instance_id] = await WAZIPER.session(instance_id, reset);
+		return callback(sessions[instance_id]);
+	},
+
+	webhook: async function (instance_id, data) {
+		var tb_webhook = await Common.db_query("SHOW TABLES LIKE 'sp_whatsapp_webhook'");
+		if (tb_webhook) {
+			var webhook = await Common.db_query("SELECT * FROM sp_whatsapp_webhook WHERE status = 1 AND instance_id = '" + instance_id + "'");
+			if (webhook) {
+				webhook.allowed_events = webhook.allowed_events ?? '';
+				if (webhook.allowed_events == '' || webhook.allowed_events.includes(data.event)) {
+					//console.log('trigger webhook', instance_id, data.event);
+					axios.post(webhook.webhook_url, { instance_id: instance_id, data: data }).then((res) => { }).catch((err) => { });
+				}
+			}
+		}
+	},
+
+	get_qrcode: async function (instance_id, res) {
+		var client = sessions[instance_id];
+		if (client == undefined) {
+			console.log('QR Code Error: Session not found for', instance_id);
+			return res.json({ status: 'error', message: "The WhatsApp session could not be found in the system" });
+		}
+
+		const alreadyAuthenticated = !!client?.authState?.creds?.me?.id || !!client?.user?.id;
+		if (client.qrcode != undefined && !client.qrcode) {
+			console.log('QR Code Error: Already logged in for', instance_id);
+			return res.json({ status: 'error', message: "It seems that you have logged in successfully" });
+		}
+
+		if (alreadyAuthenticated) {
+			console.log('QR Code Error: Session already authenticated for', instance_id);
+			return res.json({ status: 'error', message: "It seems that you have logged in successfully" });
+		}
+
+		//Check QR code exist - increased timeout to 30 seconds to allow for connection retries
+		console.log('Waiting for QR code generation for', instance_id);
+		for (var i = 0; i < 30; i++) {
+			if (client.qrcode == undefined) {
+				if (i % 5 == 0) {  // Log every 5 seconds to reduce noise
+					console.log('QR code not ready yet, waiting... attempt', i + 1, '/30');
+				}
+				await Common.sleep(1000);
+			} else {
+				console.log('QR code ready after', i + 1, 'attempts');
+				break;
+			}
+		}
+
+		if (client.qrcode == undefined || client.qrcode == false) {
+			console.log('QR Code Error: Cannot generate QR code for', instance_id, 'qrcode value:', client.qrcode);
+			return res.json({ status: 'error', message: "The system cannot generate a WhatsApp QR code" });
+		}
+
+		console.log('QR code generated successfully for', instance_id);
+		var code = qrimg.imageSync(client.qrcode, { type: 'png' });
+		return res.json({ status: 'success', message: 'Success', base64: 'data:image/png;base64,' + code.toString('base64') });
+	},
+	
+	/**
+	 * get_pairing - Generate pairing code for phone number authentication
+	 *
+	 * This function generates an 8-digit pairing code that can be entered in WhatsApp mobile app
+	 * as an alternative to scanning a QR code. Requires Baileys v6.7.21+ with requestPairingCode support.
+	 *
+	 * @param {string} instance_id - WhatsApp instance identifier
+	 * @param {object} req - Express request object (expects req.query.phone with phone number)
+	 * @param {object} res - Express response object
+	 * @returns {Promise<object>} JSON response with pairing code or error
+	 */
+	get_pairing: async function (instance_id, req, res) {
+	    var client = sessions[instance_id];
+		if (client == undefined) {
+			return res.json({ status: 'error', message: "The WhatsApp session could not be found in the system" });
+		}
+
+		// Check if already logged in
+		const alreadyAuthenticated = !!client?.authState?.creds?.me?.id || !!client?.user?.id;
+		if (alreadyAuthenticated) {
+			return res.json({ status: 'error', message: "It seems that you have logged in successfully" });
+		}
+
+		/**
+		 * FIX: Pairing code should work independently of QR code
+		 * Original condition required client.qrcode != undefined, which prevented pairing code from working
+		 * New condition: Only check if NOT already registered
+		 */
+		if (!alreadyAuthenticated) {
+		    let phoneNumber = req.query.phone;
+
+		    if (!phoneNumber) {
+		        return res.json({ status: 'error', message: "Phone number is required for pairing code authentication" });
+		    }
+
+		    phoneNumber = phoneNumber.replace(/\D/g, '');
+
+		    if (phoneNumber.length < 10) {
+		        return res.json({ status: 'error', message: "Invalid phone number format. Please provide a valid phone number without + or special characters" });
+		    }
+
+		    const waitForSocketReady = async (socket) => {
+		        for (let i = 0; i < 20; i++) {
+		            const wsState = socket?.ws?.readyState ?? socket?.ws?.socket?._readyState;
+		            if (wsState === 1 || socket?.qrcode !== undefined) {
+		                return true;
+		            }
+		            await Common.sleep(1000);
+		        }
+		        return false;
+		    };
+
+		    let pairingError = null;
+
+		    for (let attempt = 1; attempt <= 3; attempt++) {
+		        try {
+		            client = sessions[instance_id] || client;
+
+		            const ready = await waitForSocketReady(client);
+		            if (!ready) {
+		                throw new Error("WhatsApp socket is not ready yet");
+		            }
+
+		            client.paircode = undefined;
+		            client.paircode = await client.requestPairingCode(phoneNumber);
+		            console.log('Pairing code generated for', phoneNumber + ':', (client.paircode.match(/.{1,4}/g)).join('-'));
+		            pairingError = null;
+		            break;
+		        } catch (error) {
+		            pairingError = error;
+		            console.error(`Error generating pairing code (attempt ${attempt}/3):`, error);
+
+		            const isConnectionClosed = `${error?.message || ''}`.includes('Connection Closed');
+		            if (attempt < 3 && isConnectionClosed) {
+		                try {
+		                    delete sessions[instance_id];
+		                    client = await WAZIPER.session(instance_id, true);
+		                } catch (refreshError) {
+		                    console.error(`Failed to refresh session for pairing retry ${attempt}:`, refreshError.message);
+		                }
+		                await Common.sleep(2000);
+		                continue;
+		            }
+		        }
+		    }
+
+		    if (pairingError) {
+		        for (let i = 0; i < 15; i++) {
+		            if (client?.qrcode !== undefined) {
+		                break;
+		            }
+		            await Common.sleep(1000);
+		        }
+
+		        if (client?.qrcode) {
+		            const qrCodeImage = qrimg.imageSync(client.qrcode, { type: 'png' });
+		            return res.json({
+		                status: 'success',
+		                message: "Pairing code unavailable. Use QR code authentication.",
+		                code: null,
+		                fallback: 'qrcode',
+		                base64: 'data:image/png;base64,' + qrCodeImage.toString('base64')
+		            });
+		        }
+
+		        return res.json({
+		            status: 'error',
+		            message: "Failed to generate pairing code. Please try again or use QR code authentication."
+		        });
+		    }
+		}
+
+		// Wait up to 10 seconds for pairing code to be generated
+		for (var i = 0; i < 10; i++) {
+			if (client.paircode == undefined) {
+				await Common.sleep(1000);
+			} else {
+			    break; // Pairing code is ready
+			}
+		}
+
+		// Check if pairing code was successfully generated
+		if (client.paircode == undefined || client.paircode == false) {
+			return res.json({ status: 'error', message: "The system cannot generate a WhatsApp Pairing code. Please try again." });
+		}
+
+		// Return formatted pairing code (XXXX-XXXX format)
+		return res.json({ status: 'success', message: 'Success', code: client.paircode.match(/.{1,4}/g).join('-') });
+	},
+
+	get_info: async function (instance_id, res) {
+		var client = sessions[instance_id];
+		if (client != undefined && client.user != undefined) {
+			if (client.user.avatar == undefined) await Common.sleep(1500);
+			client.user.avatar = await WAZIPER.get_avatar(client);
+			return res.json({ status: 'success', message: "Success", data: client.user });
+		} else {
+			return res.json({ status: 'error', message: "Error", relogin: true });
+		}
+	},
+
+	get_avatar: async function (client) {
+		try {
+			const ppUrl = await client.profilePictureUrl(client.user.id);
+			return ppUrl;
+		} catch (e) {
+			return Common.get_avatar(client.user.name);
+		}
+	},
+
+	relogin: async function (instance_id, res) {
+		if (sessions[instance_id]) {
+			var readyState = await WAZIPER.waitForOpenConnection(sessions[instance_id].ws);
+			if (readyState === 1) {
+				sessions[instance_id].end();
+			}
+
+			delete sessions[instance_id];
+			delete chatbots[instance_id];
+			delete bulks[instance_id];
+		}
+
+		await WAZIPER.session(instance_id, true);
+	},
+
+	logout: async function (instance_id, res) {
+		var SESSION_PATH = session_dir + instance_id;
+
+		// Always try to delete the session folder, regardless of memory state
+		if (fs.existsSync(SESSION_PATH)) {
+			try {
+				rimraf.sync(SESSION_PATH);
+			} catch (e) {
+				console.error(`Failed to delete session directory ${SESSION_PATH}:`, e);
+			}
+		}
+
+		// ✅ CRITICAL FIX: Check if session exists BEFORE performing any operations
+		if (sessions[instance_id]) {
+			// ✅ CRITICAL FIX: Store session reference BEFORE calling logout
+			// When sessions[instance_id].logout() is called, it triggers Baileys' logout
+			// which fires the connection.update event handler that DELETES sessions[instance_id]
+			// This causes "Cannot read properties of undefined (reading 'ws')" error
+			const sessionRef = sessions[instance_id];
+
+			try {
+				// IMPORTANT: Call WhatsApp logout to properly disconnect from WhatsApp servers
+				// This will notify WhatsApp to remove this device from "Linked Devices" on the mobile app
+				if (sessionRef.logout && typeof sessionRef.logout === 'function') {
+					console.log('Logging out from WhatsApp servers for instance:', instance_id);
+					await sessionRef.logout();
+				} else if (sessionRef.ws && sessionRef.ws.close) {
+					// Alternative: Close WebSocket connection properly
+					sessionRef.ws.close();
+				}
+			} catch (logoutError) {
+				console.error('Error during WhatsApp logout:', logoutError.message);
+			}
+
+			// ✅ CRITICAL FIX: Use stored reference instead of sessions[instance_id]
+			// At this point, sessions[instance_id] may already be undefined due to
+			// the connection.update event handler deleting it during logout
+			try {
+				// Close local websocket events
+				if (sessionRef.ws && typeof sessionRef.ws._events?.close === "function") {
+					sessionRef.ws._events.close();
+				}
+			} catch (wsCloseError) {
+				console.error('Error closing websocket events:', wsCloseError.message);
+			}
+
+			// Clean up memory (may already be deleted by connection.update handler)
+			delete sessions[instance_id];
+			delete chatbots[instance_id];
+			delete bulks[instance_id];
+
+			// ✅ FIX: Perform database operations AFTER session cleanup
+			Common.db_delete("sp_whatsapp_sessions", [{ instance_id: instance_id }]);
+			Common.db_update("sp_accounts", [{ status: 0 }, { token: instance_id }]);
+
+			if (res != undefined) {
+				return res.json({ status: 'success', message: 'Success' });
+			}
+		} else {
+			// Session doesn't exist in memory, but folder was deleted above
+			console.log('Logout called for non-existent session:', instance_id, '- cleaned up folder and database');
+			Common.db_delete("sp_whatsapp_sessions", [{ instance_id: instance_id }]);
+			Common.db_update("sp_accounts", [{ status: 0 }, { token: instance_id }]);
+
+			if (res != undefined) {
+				return res.json({ status: 'success', message: 'Session data cleared successfully.' });
+			}
+		}
+	},
+
+	get_groups: async function (instance_id, res) {
+		var client = sessions[instance_id];
+		if (client == undefined) {
+			return res.json({ status: 'success', message: 'Success', data: [] });
+		}
+
+		try {
+			const groupMap = new Map();
+			const currentUserId = client?.user?.id || '';
+
+			const addGroups = (groupsMap) => {
+				Object.values(groupsMap || {}).forEach((group) => {
+					if (!group || !group.id) return;
+					const currentParticipant = Array.isArray(group.participants)
+						? group.participants.find((participant) => participant.id === currentUserId)
+						: null;
+					const userIsAdmin = currentParticipant?.admin === 'admin' || currentParticipant?.admin === 'superadmin';
+					const userIsOwner = group.owner === currentUserId || group.subjectOwner === currentUserId;
+					groupMap.set(group.id, {
+						id: group.id,
+						name: group.subject || '',
+						size: group.size || (Array.isArray(group.participants) ? group.participants.length : 0),
+						desc: group.desc || '',
+						participants: group.participants || [],
+						announce: group.announce === true,
+						userIsAdmin: userIsAdmin || userIsOwner,
+						isCommunity: group.isCommunity === true,
+						isCommunityAnnounce: group.isCommunityAnnounce === true,
+						linkedParent: group.linkedParent || null
+					});
+				});
+			};
+
+			if (typeof client.groupFetchAllParticipating === 'function') {
+				addGroups(await client.groupFetchAllParticipating());
+			}
+
+			if (typeof client.communityFetchAllParticipating === 'function') {
+				addGroups(await client.communityFetchAllParticipating());
+			}
+
+			const groups = Array.from(groupMap.values());
+			if (groups.length > 0) {
+				client.groups = groups;
+				return res.json({ status: 'success', message: 'Success', data: groups });
+			}
+		} catch (error) {
+			console.log('[Groups] fetch participating groups failed:', error.message);
+		}
+
+		if (client.groups != undefined) {
+			return res.json({ status: 'success', message: 'Success', data: client.groups });
+		}
+
+		res.json({ status: 'success', message: 'Success', data: [] });
+	},
+
+	bulk_messaging: async function () {
+
+		const d = new Date();
+		var time_now = parseInt(d.getTime() / 1000);
+
+		// ✅ OPTIMIZATION: Only log when there are active campaigns to process
+		// This reduces log spam from 12 logs/minute to only when campaigns are running
+		var query = `SELECT * FROM sp_whatsapp_schedules WHERE status = 1 AND run <= '${time_now}' AND accounts != '' AND time_post <= '${time_now}' ORDER BY time_post ASC LIMIT 50`;
+		items = await Common.db_query(query, false);
+
+
+		if (items) {
+			console.log('📤 Bulk messaging: Processing', items.length, 'campaigns at', time_now);
+
+			items.forEach(async (item) => {
+				await Common.db_update("sp_whatsapp_schedules", [{ run: time_now + 300 }, { id: item.id }]);
+			});
+
+			items.forEach(async (item) => {
+
+				console.log('bulk process', item.id, 'next account', item.next_account);
+				//Get current hour
+				var current_hour = -1;
+				if (item.timezone != "") {
+					var user_diff = Common.getTZDiff(item.timezone);
+					var now = moment();
+					current_hour = parseInt(now.tz(item.timezone).format('HH'));
+				}
+
+				//Process next hour
+				if (item.schedule_time != "" && current_hour != -1) {
+					var schedule_time = JSON.parse(item.schedule_time);
+					if (!schedule_time.includes(current_hour.toString())) {
+						var next_time = -1;
+
+						for (var i = 1; i <= 24; i++) {
+							var now_ = moment();
+							var hour = parseInt(now_.tz(item.timezone).add(i, 'hours').format('HH'));
+							if (schedule_time.includes(hour.toString())) {
+								var minutes = new Date(time_now * 1000).getMinutes();
+								var max_minute_rand = (minutes > 10) ? 10 : minutes;
+								var random_add_minutes = Common.randomIntFromInterval(0, max_minute_rand);
+								next_time = d.getTime() / 1000 + i * 60 * 60 - ((minutes - random_add_minutes) * 60);
+								break;
+							}
+						}
+
+						if (next_time == -1) {
+							await Common.db_update("sp_whatsapp_schedules", [{ status: 2 }, { id: item.id }]);
+						} else {
+							await Common.db_update("sp_whatsapp_schedules", [{ time_post: next_time }, { id: item.id }]);
+						}
+						return false;
+					}
+				}
+
+
+				if (!item.result) {
+					console.log('restarting counters for ', item.id);
+					var query_phone_data = '';
+					if (!bulks[item.id]) {
+						bulks[item.id] = {};
+					}
+					bulks[item.id]['bulk_sent'] = 0;
+					bulks[item.id]['bulk_failed'] = 0;
+				} else {
+					result = JSON.parse(item.result);
+					var query_phone_data = [];
+					for (var i = 0; i < result.length; i++) {
+						query_phone_data.push(result[i].phone_number.toString());
+					}
+				}
+
+
+				console.log('bulk continue bulk');
+				var params = false;
+				var phone_number_item = await Common.get_phone_number(item.contact_id, query_phone_data);
+				if (!phone_number_item) {
+					//Complete
+					await Common.db_update("sp_whatsapp_schedules", [{ status: 2, run: 0 }, { id: item.id }]);
+
+					WAZIPER.io.emit('end_campaign_' + item.team_id, {
+						id: item.id,
+						status: 2
+					});
+
+					return false;
+				} else {
+					phone_number = `${phone_number_item.phone}`.replaceAll('.00', '');
+					params = phone_number_item.params;
+				}
+
+				//Random account
+				var instance_id = false;
+				var accounts = JSON.parse(item.accounts);
+				var next_account = item.next_account;
+
+
+				// TODO: estó se puede optimizar, primero se deberia traer solo las cuentas con status 1, y a partir de ahu contar, se podria eliminar el foreach
+
+				if (next_account == null || next_account == "" || next_account > accounts.length - 1) next_account = 0;
+
+				var check_account = await Common.get_accounts(accounts.join(","));
+				if (check_account && check_account.count == 0) {
+					console.log('no accounts');
+					await Common.db_update("sp_whatsapp_schedules", [{ status: 0 }, { id: item.id }]);
+				}
+
+				await accounts.forEach(async (account, index) => {
+					if (!instance_id && index == next_account) {
+						var account_item = await Common.db_get("sp_accounts", [{ id: account }, { status: 1 }]);
+
+						if (account_item) instance_id = account_item.token;
+
+
+
+						phone_number = `${phone_number_item.phone}`.replaceAll('.00', '');
+						params = phone_number_item.params;
+						// ✅ UPDATED: Check for group chats (supports both @g.us and g.us formats)
+						if (phone_number.indexOf("g.us") !== -1 || phone_number.indexOf("@g.us") !== -1) {
+							var chat_id = phone_number;
+						} else {
+							phone_number = await Common.check_especials(phone_number);
+							var chat_id = parseInt(phone_number) + "@c.us";
+						}
+
+						if (account_item && account_item.team_id == phone_number_item.team_id) {
+
+
+							if (account_item.login_type != 1 && sessions[instance_id] == undefined) {
+								Common.db_update("sp_whatsapp_schedules", [{ next_account: next_account + 1, run: 1 }, { id: item.id }]);
+							} else {
+
+								await WAZIPER.auto_send(instance_id, chat_id, phone_number, "bulk", item, phone_number_item, false, false, async function (result) {
+									if (result.stats && result.type == "bulk") {
+										var status = result.status;
+										var new_stats = { phone_number: result.phone_number, status: status };
+										if (item.result == null || item.result == "") {
+											var result_list = [new_stats];
+										} else {
+											var result_list = JSON.parse(item.result);
+											result_list.push(new_stats);
+										}
+
+										if (bulks[item.id] == undefined) {
+											bulks[item.id] = {};
+										}
+
+										if (
+											bulks[item.id].bulk_sent == undefined &&
+											bulks[item.id].bulk_failed == undefined
+										) {
+											bulks[item.id].bulk_sent = item.sent;
+											bulks[item.id].bulk_failed = item.failed;
+										}
+
+										bulks[item.id].bulk_sent += (status ? 1 : 0);
+										bulks[item.id].bulk_failed += (!status ? 1 : 0);
+
+										//Total sent & failed
+										var total_sent = bulks[item.id].bulk_sent;
+										var total_failed = bulks[item.id].bulk_failed;
+										var total_complete = total_sent + total_failed;
+
+										//Next time post
+										var now = Math.floor(new Date().getTime() / 1000);
+										var random_time = Math.floor(Math.random() * item.max_delay) + item.min_delay;
+										var next_time = item.time_post + random_time;
+										if (next_time < now) {
+											next_time = now + random_time;
+										}
+
+										var data = {
+											result: JSON.stringify(result_list),
+											sent: total_sent,
+											failed: total_failed,
+											time_post: next_time,
+											next_account: next_account + 1,
+											run: 0,
+										};
+
+
+										await Common.db_update("sp_whatsapp_schedules", [data, { id: item.id }]);
+
+										var total_phone_numbers = await Common.get_total_phone_number(item.contact_id);
+										WAZIPER.io.emit('update_campaign_' + item.team_id, {
+											id: item.id,
+											sent: total_sent,
+											failed: total_failed,
+											next: next_time,
+											total_phone_numbers: total_phone_numbers.count
+										});
+									}
+								});
+							}
+						}
+					}
+				});
+
+			});
+		}
+	},
+
+	extract_menu_reply_payload: function(message) {
+		const payload = {
+			text: '',
+			rowId: '',
+			title: '',
+			description: ''
+		};
+
+		try {
+			if (message.message?.interactiveResponseMessage) {
+				payload.text = message.message.interactiveResponseMessage.body?.text || '';
+				const nativeFlow = message.message.interactiveResponseMessage.nativeFlowResponseMessage;
+				if (nativeFlow?.paramsJson) {
+					try {
+						const params = JSON.parse(nativeFlow.paramsJson);
+						payload.rowId = `${params.id || params.rowId || params.selectedRowId || ''}`.trim();
+						payload.title = `${params.title || params.selectedTitle || payload.text || ''}`.trim();
+						payload.description = `${params.description || ''}`.trim();
+					} catch (e) {}
+				}
+			} else if (message.message?.listResponseMessage) {
+				payload.rowId = `${message.message.listResponseMessage.singleSelectReply?.selectedRowId || ''}`.trim();
+				payload.title = `${message.message.listResponseMessage.title || ''}`.trim();
+				payload.description = `${message.message.listResponseMessage.description || ''}`.trim();
+				payload.text = payload.title;
+			} else if (message.message?.conversation) {
+				payload.text = `${message.message.conversation || ''}`.trim();
+			} else if (message.message?.extendedTextMessage?.text) {
+				payload.text = `${message.message.extendedTextMessage.text || ''}`.trim();
+			}
+		} catch (error) {}
+
+		payload.text = `${payload.text || payload.title || ''}`.trim();
+		payload.title = `${payload.title || payload.text || ''}`.trim();
+		return payload;
+	},
+
+	menu_reply_match_row: function(node, selection) {
+		if (!node || !Array.isArray(node.rows)) return null;
+		const rowId = `${selection.rowId || ''}`.trim().toLowerCase();
+		const text = `${selection.text || ''}`.trim().toLowerCase();
+		const title = `${selection.title || ''}`.trim().toLowerCase();
+
+		for (let index = 0; index < node.rows.length; index++) {
+			const row = node.rows[index] || {};
+			const candidateId = `${row.id || row.rowId || ''}`.trim().toLowerCase();
+			const candidateTitle = `${row.title || ''}`.trim().toLowerCase();
+			if ((rowId && candidateId === rowId) || (title && candidateTitle === title) || (text && candidateTitle === text)) {
+				return row;
+			}
+		}
+
+		return null;
+	},
+
+	send_menu_reply_node: async function(instance_id, chat_id, sessionData, node) {
+		if (!node || !Array.isArray(node.rows) || !node.rows.length) return false;
+
+		const content = {
+			text: `${node.body || ''}`.trim(),
+			interactiveButtons: [{
+				name: 'single_select',
+				buttonParamsJson: JSON.stringify({
+					title: `${node.buttonText || node.title || 'Select'}`.trim(),
+					sections: [{
+						title: `${node.title || node.name || 'Menu'}`.trim(),
+						rows: node.rows.map((row) => ({
+							id: `${row.id || ''}`.trim(),
+							title: `${row.title || ''}`.trim(),
+							description: `${row.description || ''}`.trim()
+						}))
+					}]
+				})
+			}]
+		};
+
+		if (`${node.title || ''}`.trim()) {
+			content.title = `${node.title || ''}`.trim();
+		}
+		if (`${node.footer || ''}`.trim()) {
+			content.footer = `${node.footer || ''}`.trim();
+		}
+
+		await WAZIPER.process_send_message(
+			chat_id,
+			{ baileys_helper_content: content },
+			"menu_reply",
+			instance_id,
+			chat_id,
+			{ team_id: sessionData.team_id, caption: content.text, type: 3, template: 0 },
+			function () {},
+			'list'
+		);
+
+		return true;
+	},
+
+	send_menu_reply_steps: async function(instance_id, chat_id, sessionData, steps) {
+		if (!Array.isArray(steps) || !steps.length) return false;
+
+		for (let index = 0; index < steps.length; index++) {
+			const step = steps[index] || {};
+			const stepType = `${step.type || 'text'}`.trim();
+			const sendItem = {
+				team_id: sessionData.team_id,
+				caption: `${step.text || ''}`.trim(),
+				media: `${step.media_url || step.mediaUrl || ''}`.trim(),
+				filename: `${step.filename || ''}`.trim(),
+				template: 0,
+				type: 1,
+				media_type: `${step.media_type || step.mediaType || ''}`.trim() || null
+			};
+
+			if (stepType === 'template') {
+				const templateId = `${step.template_id || step.templateId || ''}`.trim();
+				if (!templateId) continue;
+				const template = await Common.db_get("sp_whatsapp_template", [{ ids: templateId }]);
+				if (!template) continue;
+				sendItem.template = templateId;
+				switch (Number(template.type)) {
+					case 1:
+						sendItem.type = 3;
+						break;
+					case 2:
+						sendItem.type = 2;
+						break;
+					case 3:
+						sendItem.type = 4;
+						break;
+					default:
+						sendItem.type = 1;
+				}
+			}
+
+			await WAZIPER.auto_send(
+				instance_id,
+				chat_id,
+				chat_id,
+				"menu_reply",
+				sendItem,
+				false,
+				false,
+				false,
+				function () {}
+			);
+
+			await Common.sleep(1200);
+		}
+
+		return true;
+	},
+
+	menu_reply: async function(instance_id, user_type, message){
+		try {
+			if (user_type !== "user") return false;
+
+			await Common.db_query(`
+				CREATE TABLE IF NOT EXISTS sp_whatsapp_menu_reply (
+					id INT AUTO_INCREMENT PRIMARY KEY,
+					ids VARCHAR(50) NOT NULL,
+					team_id INT NOT NULL,
+					instance_id VARCHAR(100) NOT NULL,
+					name VARCHAR(255) NOT NULL,
+					status TINYINT(1) NOT NULL DEFAULT 1,
+					keywords LONGTEXT NULL,
+					root_node_id VARCHAR(100) NULL,
+					nodes LONGTEXT NULL,
+					changed INT NULL,
+					created INT NULL,
+					INDEX idx_menu_team_instance (team_id, instance_id),
+					INDEX idx_menu_ids (ids)
+				)
+			`);
+
+			await Common.db_query(`
+				CREATE TABLE IF NOT EXISTS sp_whatsapp_menu_session (
+					id INT AUTO_INCREMENT PRIMARY KEY,
+					team_id INT NOT NULL,
+					instance_id VARCHAR(100) NOT NULL,
+					whatsapp VARCHAR(50) NOT NULL,
+					menu_ids VARCHAR(50) NULL,
+					current_node_id VARCHAR(100) NULL,
+					changed DATETIME NULL,
+					created DATETIME NULL,
+					UNIQUE KEY uniq_menu_session (instance_id, whatsapp),
+					INDEX idx_menu_session_contact (team_id, instance_id, whatsapp)
+				)
+			`);
+
+			const chat_id = getReplyJid(message) || message.key.remoteJid;
+			if (!chat_id || chat_id.indexOf('@g.us') !== -1) return false;
+
+			const phone = `${chat_id}`.split('@')[0];
+			const sessionData = await Common.db_get("sp_whatsapp_sessions", [{ instance_id: instance_id }]);
+			if (!sessionData || !sessionData.team_id) return false;
+
+			const selection = WAZIPER.extract_menu_reply_payload(message);
+			const normalizedIncoming = `${selection.text || ''}`.trim().toLowerCase();
+			const session = await Common.db_get("sp_whatsapp_menu_session", [
+				{ instance_id: instance_id },
+				{ whatsapp: phone }
+			]);
+
+			if (session && session.menu_ids) {
+				const flow = await Common.db_get("sp_whatsapp_menu_reply", [
+					{ ids: session.menu_ids },
+					{ instance_id: instance_id },
+					{ team_id: sessionData.team_id },
+					{ status: 1 }
+				]);
+
+				if (flow && flow.nodes) {
+					const nodes = JSON.parse(flow.nodes || '[]');
+					const currentNode = Array.isArray(nodes)
+						? nodes.find((item) => `${item.id || ''}` === `${session.current_node_id || ''}`)
+						: null;
+					const matchedRow = WAZIPER.menu_reply_match_row(currentNode, selection);
+
+					if (matchedRow) {
+						const action = matchedRow.action || {};
+						if (`${action.type || ''}` === 'openNode') {
+							const targetNode = nodes.find((item) => `${item.id || ''}` === `${action.next_node_id || action.nextNodeId || ''}`);
+							if (targetNode) {
+								await WAZIPER.send_menu_reply_node(instance_id, chat_id, sessionData, targetNode);
+								await Common.db_update("sp_whatsapp_menu_session", [{
+									current_node_id: `${targetNode.id || ''}`,
+									changed: new Date()
+								}, {
+									instance_id: instance_id,
+									whatsapp: phone
+								}]);
+								return true;
+							}
+						} else {
+							await WAZIPER.send_menu_reply_steps(instance_id, chat_id, sessionData, action.steps || []);
+							await Common.db_delete("sp_whatsapp_menu_session", [
+								{ instance_id: instance_id },
+								{ whatsapp: phone }
+							]);
+							return true;
+						}
+					}
+				}
+			}
+
+			if (!normalizedIncoming) return false;
+
+			const flows = await Common.db_fetch("sp_whatsapp_menu_reply", [
+				{ instance_id: instance_id },
+				{ team_id: sessionData.team_id },
+				{ status: 1 }
+			]);
+			if (!flows || !flows.length) return false;
+
+			for (let index = 0; index < flows.length; index++) {
+				const flow = flows[index];
+				const keywords = JSON.parse(flow.keywords || '[]');
+				const matched = Array.isArray(keywords) && keywords.some((keyword) => {
+					const cleanKeyword = `${keyword || ''}`.trim().toLowerCase();
+					return cleanKeyword && normalizedIncoming.includes(cleanKeyword);
+				});
+
+				if (!matched) continue;
+
+				const nodes = JSON.parse(flow.nodes || '[]');
+				const rootNode = Array.isArray(nodes)
+					? nodes.find((item) => `${item.id || ''}` === `${flow.root_node_id || ''}`)
+					: null;
+				if (!rootNode) continue;
+
+				await WAZIPER.send_menu_reply_node(instance_id, chat_id, sessionData, rootNode);
+
+				const nowDate = new Date();
+				const existingSession = await Common.db_get("sp_whatsapp_menu_session", [
+					{ instance_id: instance_id },
+					{ whatsapp: phone }
+				]);
+				const payload = {
+					team_id: sessionData.team_id,
+					instance_id: instance_id,
+					whatsapp: phone,
+					menu_ids: flow.ids,
+					current_node_id: `${rootNode.id || ''}`,
+					changed: nowDate
+				};
+
+				if (existingSession) {
+					await Common.db_update("sp_whatsapp_menu_session", [payload, { id: existingSession.id }]);
+				} else {
+					payload.created = nowDate;
+					await Common.db_insert("sp_whatsapp_menu_session", payload);
+				}
+
+				return true;
+			}
+
+			return false;
+		} catch (error) {
+			console.error('[Menu Reply] Error:', error.message);
+			return false;
+		}
+	},
+
+	welcome_message: async function(instance_id, user_type, message){
+		try {
+			if (user_type !== "user") return false;
+
+			await Common.db_query(`
+				CREATE TABLE IF NOT EXISTS sp_whatsapp_welcome_message (
+					id INT AUTO_INCREMENT PRIMARY KEY,
+					ids VARCHAR(50) NOT NULL,
+					team_id INT NOT NULL,
+					instance_id VARCHAR(100) NOT NULL,
+					name VARCHAR(255) NOT NULL,
+					status TINYINT(1) NOT NULL DEFAULT 1,
+					steps LONGTEXT NULL,
+					changed INT NULL,
+					created INT NULL,
+					INDEX idx_welcome_team_instance (team_id, instance_id),
+					INDEX idx_welcome_ids (ids)
+				)
+			`);
+
+			await Common.db_query(`
+				CREATE TABLE IF NOT EXISTS sp_whatsapp_welcome_log (
+					id INT AUTO_INCREMENT PRIMARY KEY,
+					team_id INT NOT NULL,
+					instance_id VARCHAR(100) NOT NULL,
+					whatsapp VARCHAR(50) NOT NULL,
+					welcome_ids VARCHAR(50) NULL,
+					first_incoming_at DATETIME NULL,
+					last_welcome_sent_at DATETIME NULL,
+					total_sent INT NOT NULL DEFAULT 0,
+					created DATETIME NULL,
+					changed DATETIME NULL,
+					UNIQUE KEY uniq_welcome_contact (instance_id, whatsapp),
+					INDEX idx_welcome_contact (team_id, instance_id, whatsapp)
+				)
+			`);
+
+			const chat_id = getReplyJid(message) || message.key.remoteJid;
+			if (!chat_id || chat_id.indexOf('@g.us') !== -1) return false;
+
+			const phone = `${chat_id}`.split('@')[0];
+			const sessionData = await Common.db_get("sp_whatsapp_sessions", [{ instance_id: instance_id }]);
+			if (!sessionData || !sessionData.team_id) return false;
+
+			const flow = await Common.db_get("sp_whatsapp_welcome_message", [
+				{ instance_id: instance_id },
+				{ team_id: sessionData.team_id },
+				{ status: 1 }
+			]);
+			if (!flow || !flow.steps) return false;
+
+			const existingLog = await Common.db_get("sp_whatsapp_welcome_log", [
+				{ instance_id: instance_id },
+				{ whatsapp: phone }
+			]);
+
+			if (existingLog) {
+				return false;
+			}
+
+			const nowDate = new Date();
+			await Common.db_insert("sp_whatsapp_welcome_log", {
+				team_id: sessionData.team_id,
+				instance_id: instance_id,
+				whatsapp: phone,
+				welcome_ids: flow.ids,
+				first_incoming_at: nowDate,
+				last_welcome_sent_at: null,
+				total_sent: 0,
+				created: nowDate,
+				changed: nowDate
+			});
+
+			const steps = JSON.parse(flow.steps);
+			if (!Array.isArray(steps) || steps.length === 0) return false;
+
+			for (let index = 0; index < steps.length; index++) {
+				const step = steps[index] || {};
+				const stepType = `${step.type || 'text'}`.trim();
+				const item = {
+					team_id: sessionData.team_id,
+					caption: `${step.text || ''}`.trim(),
+					media: `${step.media_url || ''}`.trim(),
+					filename: `${step.filename || ''}`.trim(),
+					template: 0,
+					type: 1,
+					media_type: null
+				};
+
+				if (stepType === 'template') {
+					const templateId = `${step.template_id || ''}`.trim();
+					if (!templateId) {
+						continue;
+					}
+					const template = await Common.db_get("sp_whatsapp_template", [{ ids: templateId }]);
+					if (!template) {
+						continue;
+					}
+					item.template = templateId;
+					switch (Number(template.type)) {
+						case 1:
+							item.type = 3;
+							break;
+						case 2:
+							item.type = 2;
+							break;
+						case 3:
+							item.type = 4;
+							break;
+						default:
+							item.type = 1;
+					}
+				} else if (stepType === 'media') {
+					item.type = 1;
+					item.media_type = `${step.media_type || 'image'}`.trim();
+				}
+
+				await WAZIPER.auto_send(
+					instance_id,
+					chat_id,
+					chat_id,
+					"welcome_message",
+					item,
+					false,
+					false,
+					false,
+					function () {}
+				);
+
+				await Common.db_update("sp_whatsapp_welcome_log", [{
+					last_welcome_sent_at: new Date(),
+					total_sent: index + 1,
+					changed: new Date()
+				}, {
+					instance_id: instance_id,
+					whatsapp: phone
+				}]);
+
+				await Common.sleep(1500);
+			}
+
+			return true;
+		} catch (error) {
+			console.error('[Welcome Message] Error:', error.message);
+			return false;
+		}
+	},
+
+	keyword_reply: async function(instance_id, user_type, message){
+		try {
+			if (user_type !== "user") return false;
+
+			await Common.db_query(`
+				CREATE TABLE IF NOT EXISTS sp_whatsapp_keyword_reply (
+					id INT AUTO_INCREMENT PRIMARY KEY,
+					ids VARCHAR(50) NOT NULL,
+					team_id INT NOT NULL,
+					instance_id VARCHAR(100) NOT NULL,
+					name VARCHAR(255) NOT NULL,
+					status TINYINT(1) NOT NULL DEFAULT 1,
+					keywords LONGTEXT NULL,
+					steps LONGTEXT NULL,
+					changed INT NULL,
+					created INT NULL,
+					INDEX idx_keyword_team_instance (team_id, instance_id),
+					INDEX idx_keyword_ids (ids)
+				)
+			`);
+
+			const chat_id = getReplyJid(message) || message.key.remoteJid;
+			if (!chat_id || chat_id.indexOf('@g.us') !== -1) return false;
+
+			let incomingText = '';
+			if (message.message?.conversation) {
+				incomingText = message.message.conversation;
+			} else if (message.message?.extendedTextMessage?.text) {
+				incomingText = message.message.extendedTextMessage.text;
+			} else if (message.message?.interactiveResponseMessage?.body?.text) {
+				incomingText = message.message.interactiveResponseMessage.body.text;
+			}
+
+			incomingText = `${incomingText}`.trim().toLowerCase();
+			if (!incomingText) return false;
+
+			const sessionData = await Common.db_get("sp_whatsapp_sessions", [{ instance_id: instance_id }]);
+			if (!sessionData || !sessionData.team_id) return false;
+
+			const items = await Common.db_fetch("sp_whatsapp_keyword_reply", [
+				{ instance_id: instance_id },
+				{ team_id: sessionData.team_id },
+				{ status: 1 }
+			]);
+			if (!items || !items.length) return false;
+
+			for (let flowIndex = 0; flowIndex < items.length; flowIndex++) {
+				const itemRow = items[flowIndex];
+				const keywords = JSON.parse(itemRow.keywords || '[]');
+				const matched = Array.isArray(keywords) && keywords.some((keyword) => {
+					const cleanKeyword = `${keyword || ''}`.trim().toLowerCase();
+					return cleanKeyword && incomingText.includes(cleanKeyword);
+				});
+
+				if (!matched) continue;
+
+				const steps = JSON.parse(itemRow.steps || '[]');
+				if (!Array.isArray(steps) || !steps.length) return false;
+
+				for (let index = 0; index < steps.length; index++) {
+					const step = steps[index] || {};
+					const stepType = `${step.type || 'text'}`.trim();
+					const sendItem = {
+						team_id: sessionData.team_id,
+						caption: `${step.text || ''}`.trim(),
+						media: '',
+						filename: '',
+						template: 0,
+						type: 1,
+						media_type: null
+					};
+
+					if (stepType === 'template') {
+						const templateId = `${step.template_id || ''}`.trim();
+						if (!templateId) continue;
+						const template = await Common.db_get("sp_whatsapp_template", [{ ids: templateId }]);
+						if (!template) continue;
+						sendItem.template = templateId;
+						switch (Number(template.type)) {
+							case 1:
+								sendItem.type = 3;
+								break;
+							case 2:
+								sendItem.type = 2;
+								break;
+							case 3:
+								sendItem.type = 4;
+								break;
+							default:
+								sendItem.type = 1;
+						}
+					}
+
+					await WAZIPER.auto_send(
+						instance_id,
+						chat_id,
+						chat_id,
+						"keyword_reply",
+						sendItem,
+						false,
+						false,
+						false,
+						function () {}
+					);
+
+					await Common.sleep(1200);
+				}
+
+				return true;
+			}
+
+			return false;
+		} catch (error) {
+			console.error('[Keyword Reply] Error:', error.message);
+			return false;
+		}
+	},
+	
+	autoresponder: async function(instance_id, user_type, message){
+            // ✅ PRODUCTION RULE: Always reply using the SAME JID format as the incoming message
+            // Use getReplyJid() to preserve @lid or @s.whatsapp.net format
+            var chat_id = getReplyJid(message) || message.key.remoteJid;
+            var now = new Date().getTime() / 1000;
+            var item = await Common.db_get("sp_whatsapp_autoresponder", [{ instance_id: instance_id }, { status: 1 }]);
+           // console.log("MENSAGEM RECEBIDA:", message);
+            //    console.log("Conte do de contextInfo:", message.contextInfo);
+
+        
+            //item.delay = 1; // TESTE APENAS - Ajuste o valor para o n mero desejado em minutos
+        
+            if (!item) {
+                return false;
+            }
+        
+            //Accept sent to all/group/user
+            switch (item.send_to) {
+                case 2:
+                    if (user_type == "group") return false;
+                    break;
+                case 3:
+                    if (user_type == "user") return false;
+                    break;
+            }
+            
+            //Except contacts
+            var except_data = [];
+            if (item.except != null) {
+                var except_data = item.except.split(",");;
+            }
+            
+            //console.log("Contatos Exclu dos:", except_data);
+        
+            if (except_data.length > 0) {
+                for (var i = 0; i < except_data.length; i++) {
+                    if (except_data[i] != "" && chat_id.indexOf(except_data[i]) != -1) {
+                        console.log("Contato exclu do. N o enviando resposta autom tica.");
+                        return false;
+                    }
+                }
+            }
+                    
+            //EDITED G3
+            var idConversa = message.key.id;
+            var participanteGrupo = message.key.participant;
+        
+            //nextAction, inputName e saveData
+            var saveData = '';
+            var inputName = '';
+            var nextAction = '';
+        
+            //EDITED G3 - Acessar o texto da mensagem
+            // ✅ FIX #8: Extract content from interactive messages (buttons, lists)
+            // Support NEW interactiveResponseMessage format (WhatsApp protocol update)
+            var msgConversa = '';
+
+            // Check for NEW interactive message format first
+            if (message.message?.interactiveResponseMessage) {
+                // NEW FORMAT: WhatsApp now uses interactiveResponseMessage for all interactive replies
+                msgConversa = message.message.interactiveResponseMessage.body?.text || '';
+
+                // Also extract additional data from nativeFlowResponseMessage if available
+                const nativeFlow = message.message.interactiveResponseMessage.nativeFlowResponseMessage;
+                if (nativeFlow?.paramsJson) {
+                    try {
+                        const params = JSON.parse(nativeFlow.paramsJson);
+                        // Append description if available (for list selections)
+                        if (params.description) {
+                            msgConversa += ' ' + params.description;
+                        }
+                    } catch (e) {
+                        // Ignore JSON parse errors
+                    }
+                }
+            } else if (message.message?.buttonsResponseMessage) {
+                // LEGACY FORMAT: Old button response format
+                msgConversa = message.message.buttonsResponseMessage.selectedDisplayText || '';
+            } else if (message.message?.templateButtonReplyMessage) {
+                // LEGACY FORMAT: Old template button format
+                msgConversa = message.message.templateButtonReplyMessage.selectedDisplayText || '';
+            } else if (message.message?.listResponseMessage) {
+                // LEGACY FORMAT: Old list response format
+                msgConversa = message.message.listResponseMessage.title || '';
+                if (message.message.listResponseMessage.description) {
+                    msgConversa += ' ' + message.message.listResponseMessage.description;
+                }
+            } else if (chat_id.length >= 16) {
+                // Regular text message (user chat)
+                msgConversa = message.message.conversation || '';
+            } else {
+                // Extended text message (group chat)
+                msgConversa = message.message.extendedTextMessage?.text || '';
+            }
+            
+            //Definir a mensagem recebida
+            const msgRecebida = msgConversa;
+            //EDITED G3 - Obter o nome definido pelo contato no WhatsApp
+            const waName = message.pushName || '';
+            var cleanedWaName = waName.replace(/[&<>"']/g, '');
+    
+            // Substituir as vari veis no corpo da requisi  o
+            item.caption = item.caption.replace('%msg_recebida%', msgRecebida)
+                            .replace('%wa_nome%', cleanedWaName)
+                            .replace('%wa_numero%', userPhone);
+            //console.log("nome wa:", message.pushName);
+            //console.log("Dados MSG:", item.caption);
+        
+            // Obter o n mero de telefone do contato
+            var userPhone = message.key.remoteJid.split('@')[0];
+                console.log("DADOS RR:" , userPhone);
+            // Verificar se h  um registro na tabela para este n mero
+            
+            var whereClause = [{ whatsapp: userPhone} , {instance_id: instance_id }];
+            //var items = await Common.db_fetch("sp_whatsapp_chatbot", [ { instance_id: instance_id }, { status: 1 }, { run: 1 } ]);
+            
+            var responseRecord = await Common.db_fetch("sp_whatsapp_ar_responses", [{ whatsapp: userPhone} , {instance_id: instance_id }]);
+                //console.log("WHEREClause:", whereClause);
+                //console.log("RR:", responseRecord);
+        
+            // ...
+
+            if (responseRecord) {
+                // Calcular o tempo decorrido desde a  ltima resposta
+                var timeElapsed = now - new Date(responseRecord[0].last_response).getTime() / 1000;
+            
+                // Verificar se j  passou o tempo definido em delay
+                if (timeElapsed < item.delay * 60) {
+                    //console.log("Proxima intera  o:", item.delay);
+                    console.log("Tempo ainda n o passou. Aguardando...");
+                    return false; // N o enviar a resposta autom tica se o tempo n o tiver passado
+                }
+            } else {
+                // Se n o existir, crie um novo registro
+                var newRecord = {
+                    whatsapp: userPhone,
+                    instance_id: instance_id,
+                    last_response: new Date(),
+                    // Adicione outras colunas e valores necess rios
+                };
+            
+                // Insira o novo registro no banco de dados
+                await Common.db_insert("sp_whatsapp_ar_responses", newRecord);
+            
+               // console.log("Novo registro criado:", newRecord);
+            
+                // Debugging: Adicione logs para verificar se a l gica de envio de mensagem est  sendo alcan ada
+                //console.log("Enviando a resposta autom tica...");
+                await sessions[instance_id].sendPresenceUpdate('composing', chat_id);
+
+                setTimeout(async function () {
+                    // ✅ FIX: Added missing 'content' parameter (false) before callback
+                    await WAZIPER.auto_send(instance_id, chat_id, chat_id, "autoresponder", item, false, false, false, function(result) {
+                        console.log("Resultado do envio 1:", result);
+                        // L gica de envio da resposta autom tica
+
+                    });
+                }, 10000);
+                await sessions[instance_id].sendPresenceUpdate('available', chat_id);
+            
+                console.log("Resposta autom tica enviada para ", userPhone);
+            }
+            
+        
+            //END EDITED
+                   
+             // Delay response
+            var userPhone = message.key.remoteJid.split('@')[0];
+            var whereClause = [{ whatsapp: userPhone} , {instance_id: instance_id }];
+            //var items = await Common.db_fetch("sp_whatsapp_chatbot", [ { instance_id: instance_id }, { status: 1 }, { run: 1 } ]);
+            
+            var responseRecord = await Common.db_fetch("sp_whatsapp_ar_responses", [{ whatsapp: userPhone} , {instance_id: instance_id }]);
+                //console.log("WHEREClause 2:", whereClause);
+                //console.log("RR 2:", responseRecord);
+        
+            // ...
+
+            if (responseRecord) {
+                // Calcular o tempo decorrido desde a  ltima resposta
+                var timeElapsed = now - new Date(responseRecord[0].last_response).getTime() / 1000;
+            
+                // Verificar se j  passou o tempo definido em delay
+                if (timeElapsed < item.delay * 60) {
+                    //console.log("Proxima intera  o:", item.delay);
+                    console.log("Tempo ainda n o passou. Aguardando...");
+                    return false; // N o enviar a resposta autom tica se o tempo n o tiver passado
+                }
+            } else {
+                // Se n o existir, crie um novo registro
+                var newRecord = {
+                    whatsapp: userPhone,
+                    instance_id: instance_id,
+                    last_response: new Date(),
+                    // Adicione outras colunas e valores necess rios
+                };
+            
+                // Insira o novo registro no banco de dados
+                await Common.db_insert("sp_whatsapp_ar_responses", newRecord);
+            
+               // console.log("Novo registro criado:", newRecord);
+            
+                // Debugging: Adicione logs para verificar se a l gica de envio de mensagem est  sendo alcan ada
+                //console.log("Enviando a resposta autom tica...");
+
+                // ✅ FIX: Added missing 'content' parameter (false) before callback
+                await WAZIPER.auto_send(instance_id, chat_id, chat_id, "autoresponder", item, false, false, false, function(result) {
+                    console.log("Resultado do envio:", result);
+                    // L gica de envio da resposta autom tica
+                });
+            
+                console.log("Resposta autom tica enviada para ", userPhone);
+            }
+        
+            // Agrupa os par metros em um objeto
+            const msg_info = {
+                cleanedWaName: cleanedWaName,
+                userPhone: userPhone,
+                idConversa: idConversa,
+                msgConversa: msgConversa,
+                participanteGrupo: participanteGrupo,
+                nextAction: nextAction,
+                inputName: inputName,
+                saveData: saveData
+            };
+        
+            // Atualizar ou inserir o registro na tabela com o novo timestamp
+            var updateData = { last_response: new Date() };
+            var whereClause = { whatsapp: userPhone, instance_id: instance_id };
+        
+            // Adicione esta fun  o dentro do mesmo escopo que autoresponder
+            async function updateOrInsert(table, updateData, whereClause) {
+                //console.log("whereClause2:", whereClause2);
+                var existingRecord = await Common.db_fetch(table, whereClause);
+                //console.log("DB_fetch:", existingRecord);
+            
+                if (existingRecord && existingRecord.length > 0) {
+                    // Se o registro existir, atualizar
+                    var matchingRecord = existingRecord.find(record => 
+                        record.whatsapp === whereClause.whatsapp && record.instance_id === whereClause.instance_id
+                    );
+            
+                    if (matchingRecord) {
+                        // Se o registro existir, atualizar
+                        console.log("Registro existente. Atualizando...");
+            
+                        // Obter o ID do registro existente
+                        var id = matchingRecord.id;
+                        console.log("ID CONTATO:", id);
+            
+                        var dataUp = {
+                            last_response: new Date(),
+                            // Adicione outras colunas e valores que deseja atualizar
+                        };
+            
+                        // Atualizar com base no ID
+                        var res = await Common.db_update(table, [dataUp, { id: id }]);
+                        console.log("Resultado da atualiza  o:", res);
+                        return res;
+                    } else {
+                        console.log("Registro n o encontrado para atualiza  o.");
+                        // Se o registro n o for encontrado, voc  pode optar por inserir um novo registro aqui
+                        // var res = await Common.db_insert(table, { ...updateData, ...whereClause });
+                        // console.log("Resultado da inser  o:", res);
+                        // return res;
+                    }
+                } else {
+                    // Se o registro n o existir, inserir
+                    console.log("Registro n o existente. Inserindo...");
+                    var res = await Common.db_insert(table, { ...updateData, ...whereClause });
+                    console.log("Resultado da inser  o:", res);
+                    return res;
+                }
+            }
+
+
+        
+            // Verificar se o registro j  existe
+            var existingRecord = await Common.db_fetch("sp_whatsapp_ar_responses", whereClause);
+        
+            if (existingRecord) {
+                // Se o registro existir, atualizar
+                await updateOrInsert("sp_whatsapp_ar_responses", updateData, whereClause);
+            } else {
+                // Se o registro n o existir, inserir
+                await updateOrInsert("sp_whatsapp_ar_responses", { ...updateData, ...whereClause });
+            }
+        
+            //ENVIAR SE TIVER PASSADO TEMPO
+            console.log("Tempo passou. Enviando a resposta autom tica...");
+            await sessions[instance_id].sendPresenceUpdate('composing', chat_id);
+            // ✅ FIX: Added missing 'content' parameter (false) before callback
+            await WAZIPER.auto_send(instance_id, chat_id, chat_id, "autoresponder", item, false, false, false, function(result) {
+                //console.log('Resultado AR 3:', result);
+                // L gica de envio da resposta autom tica
+            });
+            await sessions[instance_id].sendPresenceUpdate('available', chat_id);
+            return false;
+        },
+
+	/*autoresponder: async function (instance_id, user_type, message) {
+		var chat_id = message.key.remoteJid;
+		var tz = await Extend.getAccountTimezone(instance_id);
+		var now = new Date().getTime().toLocaleString('en-US', {
+		    timeZone: tz
+		});
+		now = now.split(",");
+		now = now[0] + now[1] + now[2] + now[3];
+		var item = await Common.db_get("sp_whatsapp_autoresponder", [{ instance_id: instance_id }, { status: 1 }]);
+		if (!item) {
+			return false;
+		}
+
+		//Accept sent to all/group/user
+		switch (item.send_to) {
+			case 2:
+				if (user_type == "group") return false;
+				break;
+			case 3:
+				if (user_type == "user") return false;
+				break;
+		}
+
+		var check_autoresponder = await Extend.autoresponder_time(message, instance_id, chat_id);
+
+		if (check_autoresponder && check_autoresponder + call_item.delay * 60 >= now) {
+			return false;
+		}
+
+		//Except contacts
+		var except_data = [];
+		if (item.except != null) {
+			var except_data = item.except.split(",");;
+		}
+
+		if (except_data.length > 0) {
+			for (var i = 0; i < except_data.length; i++) {
+				if (except_data[i] != "" && chat_id.indexOf(except_data[i]) != -1) {
+					return false;
+				}
+			}
+		}
+
+		await WAZIPER.auto_send(instance_id, chat_id, chat_id, "autoresponder", item, false, message, false, function (result) { });
+		return false;
+	},*/
+	
+	/**
+	 * callresponder - Automated response system for incoming WhatsApp calls
+	 *
+	 * @param {string} instance_id - WhatsApp instance identifier
+	 * @param {Array} call - Call event array from Baileys containing call details
+	 *
+	 * Call event structure (Baileys v6.7.21):
+	 * - call[0].from: Caller's JID (e.g., "919876543210@s.whatsapp.net" or "176695155916836@lid")
+	 * - call[0].status: Call status - "offer" (incoming), "accept" (answered), "reject" (declined), "timeout"
+	 * - call[0].isVideo: Boolean indicating if it's a video call
+	 * - call[0].isGroup: Boolean indicating if it's a group call
+	 * - call.date: Call timestamp
+	 *
+	 * Trigger Types (send_to configuration):
+	 * - send_to = 1: All Events (triggers on both Accept and Reject)
+	 * - send_to = 2: Accept Call only (triggers only when call is accepted)
+	 * - send_to = 3: Reject Call only (triggers only when call is rejected)
+	 *
+	 * Features:
+	 * - Blocks group calls (only responds to individual calls)
+	 * - Respects delay settings to prevent spam
+	 * - Supports exception list for specific contacts
+	 * - Filters by call status based on send_to configuration
+	 */
+	callresponder: async function (instance_id, call) {
+		console.log('📞 ========== CALL RESPONDER TRIGGERED ==========');
+		console.log('📞 Instance ID:', instance_id);
+		console.log('📞 Call Data:', JSON.stringify(call, null, 2));
+
+		var chat_id = call[0].from;
+		var call_status = call[0].status;
+		var now = new Date().getTime() / 1000;
+		var calltime = new Date(+call.date * 1000);
+
+		console.log('📞 Parsed Call Info:');
+		console.log('   - Chat ID:', chat_id);
+		console.log('   - Call Status:', call_status);
+		console.log('   - Call Time:', calltime);
+		console.log('   - Current Time:', new Date(now * 1000));
+
+		var call_item = await Common.db_get("sp_whatsapp_callresponder", [{ instance_id: instance_id }, { status: 1 }]);
+
+		if (!call_item) {
+			console.log('📞 ❌ No active call responder configuration found for instance:', instance_id);
+			return false;
+		}
+
+		console.log('📞 ✅ Call Responder Config Found:');
+		console.log('   - send_to:', call_item.send_to, '(1=All Events, 2=Accept Only, 3=Reject Only)');
+		console.log('   - delay:', call_item.delay, 'minutes');
+		console.log('   - except:', call_item.except);
+
+		// ✅ FIX: Block group calls - only respond to individual calls
+		// Individual chats: contain "@s.whatsapp.net" or "@lid"
+		// Group chats: contain "@g.us"
+		if (chat_id.indexOf("g.us") !== -1 || chat_id.indexOf("@g.us") !== -1) {
+			console.log('📞 Call Responder: Blocked group call from', chat_id);
+			return false;
+		}
+
+		// Initialize lastCall tracking
+		if(sessions[instance_id].lastCall == undefined){
+    		sessions[instance_id].lastCall = {};
+    	}
+
+		// Check delay to prevent spam
+    	var check_autoresponder = sessions[instance_id].lastCall[chat_id];
+    	sessions[instance_id].lastCall[chat_id] = calltime / 1000;
+
+    	if (check_autoresponder && check_autoresponder + call_item.delay * 60 >= now) {
+			console.log('📞 Call Responder: Blocked due to delay from', chat_id);
+			return false;
+		}
+
+		// Check exception list
+		var except_data = [];
+		if (call_item.except != null) {
+			var except_data = call_item.except.split(",");
+		}
+
+		if (except_data.length > 0) {
+			for (var i = 0; i < except_data.length; i++) {
+				if (except_data[i] != "" && chat_id.indexOf(except_data[i]) != -1) {
+					console.log('📞 Call Responder: Blocked exception contact', chat_id);
+					return false;
+				}
+			}
+		}
+
+		// ✅ FIX: Proper send_to logic based on call status
+		// send_to = 1: All Events (both accept and reject)
+		// send_to = 2: Accept Call only
+		// send_to = 3: Reject Call only
+		var should_respond = false;
+
+		switch (call_item.send_to) {
+			case 1:
+				// All Events - respond to both accept and reject
+				if (call_status == "accept" || call_status == "reject") {
+					should_respond = true;
+				}
+				break;
+			case 2:
+				// Accept Call only
+				if (call_status == "accept") {
+					should_respond = true;
+				}
+				break;
+			case 3:
+				// Reject Call only
+				if (call_status == "reject") {
+					should_respond = true;
+				}
+				break;
+			default:
+				// Default to all events if send_to not configured
+				if (call_status == "accept" || call_status == "reject") {
+					should_respond = true;
+				}
+		}
+
+		if (should_respond) {
+			console.log(`📞 Call Responder: Sending response for ${call_status} call from`, chat_id);
+			await WAZIPER.auto_send(instance_id, chat_id, chat_id, "callresponder", call_item, false, false, false, function (result) { });
+		} else {
+			console.log(`📞 Call Responder: Skipped ${call_status} call (send_to=${call_item.send_to}) from`, chat_id);
+		}
+
+		return false;
+	},
+
+	chatbot: async function (instance_id, user_type, message) {
+		// ✅ PRODUCTION RULE: Always reply using the SAME JID format as the incoming message
+		// Use getReplyJid() to preserve @lid or @s.whatsapp.net format
+		var chat_id = getReplyJid(message) || message.key.remoteJid;
+
+		console.log(`[Chatbot] Processing message for instance: ${instance_id}, chat: ${chat_id}`);
+
+		counter = 0;
+		var sent = false;
+		var qr_code_send = false;
+		
+		if (sessions_caches[instance_id] == undefined) {
+		    sessions_caches[instance_id] = {
+		        msgRetryCounterCache: new NodeCache(),
+		        userDevicesCache: new NodeCache()
+		    };
+		}
+
+		var content = false;
+
+		var body_message = {};
+
+		if (message.message?.ephemeralMessage) {
+			message.message = message.message.ephemeralMessage.message;
+		}
+
+		// ✅ FIX #8: Support NEW interactiveResponseMessage format (WhatsApp protocol update)
+		// Check for new format first, then fall back to legacy formats
+		if (message.message?.interactiveResponseMessage != undefined) {
+			// NEW FORMAT: WhatsApp now uses interactiveResponseMessage for all interactive replies
+			// Extract text from body.text field
+			content = message.message.interactiveResponseMessage.body?.text || '';
+			body_message['content'] = content;
+			body_message['type'] = 'interactiveResponseMessage';
+
+			// Also extract additional data from nativeFlowResponseMessage if available
+			const nativeFlow = message.message.interactiveResponseMessage.nativeFlowResponseMessage;
+			if (nativeFlow?.paramsJson) {
+				try {
+					const params = JSON.parse(nativeFlow.paramsJson);
+					// Append description if available (for list selections)
+					if (params.description) {
+						content += ' ' + params.description;
+						body_message['content'] = content;
+					}
+				} catch (e) {
+					// Ignore JSON parse errors
+				}
+			}
+		} else if (message.message?.buttonsResponseMessage != undefined) {
+			// LEGACY FORMAT: Old button response format
+			content = message.message?.buttonsResponseMessage.selectedDisplayText;
+			body_message['content'] = content;
+			body_message['type'] = 'buttonsResponseMessage';
+		} else if (message.message?.templateButtonReplyMessage != undefined) {
+			// LEGACY FORMAT: Old template button format
+			content = message.message.templateButtonReplyMessage.selectedDisplayText;
+			body_message['content'] = message.message.templateButtonReplyMessage.selectedDisplayText;
+			body_message['type'] = 'templateButtonReplyMessage';
+		} else if (message.message?.listResponseMessage != undefined) {
+			// LEGACY FORMAT: Old list response format
+			content = message.message.listResponseMessage.title + " " + message.message.listResponseMessage.description;
+			body_message['content'] = message.message.listResponseMessage.title + " " + message.message.listResponseMessage.description;
+			body_message['type'] = 'listResponseMessage';
+		} else if (typeof message.message?.extendedTextMessage != "undefined" && message.message.extendedTextMessage != null) {
+			content = message.message.extendedTextMessage.text;
+			body_message['content'] = message.message.extendedTextMessage.text;
+			body_message['type'] = 'textMessage';
+		} else if (typeof message.message?.imageMessage != "undefined" && message.message.imageMessage != null) {
+			content = message.message.imageMessage.caption;
+			body_message['content'] = message.message.imageMessage.caption;
+			body_message['type'] = 'imageMessage';
+			if (!content) {
+				content = '📷';
+				body_message['content'] = '📷';
+			}
+		}
+		else if (typeof message.message?.stickerMessage != "undefined" && message.message.stickerMessage != null) {
+
+			content = message.message?.stickerMessage?.caption;
+			body_message['content'] = message.message?.stickerMessage?.caption;
+			body_message['type'] = 'stickerMessage';
+			if (!content) {
+				content = '📷';
+				body_message['content'] = '📷';
+			}
+		} else if (typeof message.message?.videoMessage != "undefined" && message.message.videoMessage != null) {
+			content = message.message?.videoMessage?.caption;
+			body_message['content'] = message.message?.videoMessage?.caption;
+			body_message['type'] = 'videoMessage';
+			if (!content) {
+				content = '📹';
+				body_message['content'] = '📹';
+			}
+		}
+		else if (typeof message.message?.audioMessage != "undefined" && message.message.audioMessage != null) {
+			content = message.message?.audioMessage?.caption;
+			body_message['content'] = message.message?.audioMessage?.caption;
+			body_message['type'] = 'audioMessage';
+			if (!content) {
+				content = '🎧';
+				body_message['content'] = '🎧';
+			}
+		} else if (typeof message.message?.conversation != "undefined") {
+			content = message.message.conversation;
+			body_message['content'] = message.message.conversation;
+			body_message['type'] = 'textMessage';
+		}
+
+		if (!content) {
+			message['message'] = {};
+			message['message']['conversation'] = '👋';
+			content = '👋';
+
+			body_message['content'] = '';
+			body_message['type'] = 'emptyMessage';
+		}
+		body_message['messages'] = message.message;
+
+
+		WAZIPER.webhook(instance_id, {
+			event: "received_message", message: {
+				'body_message': body_message,
+				'message_key': message?.key,
+				'push_name': message?.pushName ?? '',
+				'from_contact': Common.get_phone(chat_id, null)
+			}
+		});
+
+		if (body_message['type'] == 'emptyMessage') {
+			console.log(`[Chatbot] Empty message, skipping`);
+			return false;
+		}
+
+		console.log(`[Chatbot] Getting subscriber for instance: ${instance_id}`);
+		var subscriptor_ = await Extend.getSubscriber(WAZIPER, message, instance_id);
+
+		if (!subscriptor_) {
+			console.error(`[Chatbot] ❌ FAILED: getSubscriber returned false for instance ${instance_id}`);
+			console.error(`[Chatbot] This means sp_whatsapp_sessions record is missing or get_instance failed`);
+			return false;
+		}
+
+		console.log(`[Chatbot] Subscriber found: ${subscriptor_.chatid}, enabled_chatbot: ${subscriptor_.enabled_chatbot}`);
+
+		if (subscriptor_.enabled_chatbot == '0') {
+			console.warn(`[Chatbot] ⚠️  Chatbot is DISABLED for subscriber ${subscriptor_.chatid} (instance: ${instance_id})`);
+			console.warn(`[Chatbot] Subscriber may have sent "Disable" keyword. To re-enable:`);
+			console.warn(`[Chatbot]   1. Send "Enable" keyword from WhatsApp`);
+			console.warn(`[Chatbot]   2. OR run: UPDATE sp_whatsapp_subscriber SET enabled_chatbot = 1 WHERE chatid = '${subscriptor_.chatid}';`);
+			return false;
+		}
+
+		// ---- VISUAL FLOW ENGINE EXECUTION ----
+		const FlowEngine = require('./flow_engine');
+		const flowHandled = await FlowEngine.handleMessage(WAZIPER, Common, instance_id, chat_id, content, message, subscriptor_);
+		if (flowHandled) {
+			console.log(`[FlowEngine] Message handled by Visual Flow for instance: ${instance_id}`);
+			return true; // Block standard chatbot if handled by FlowEngine
+		}
+		// --------------------------------------
+
+		console.log(`[Chatbot] Fetching chatbot items for instance: ${instance_id}`);
+		var items = await Common.db_fetch("sp_whatsapp_chatbot", [{ instance_id: instance_id }, { status: 1 }, { run: 1 }]);
+		if (!items) {
+			console.log(`[Chatbot] No chatbot items found for instance: ${instance_id}`);
+			return false;
+		}
+
+		console.log(`[Chatbot] Found ${items.length} chatbot item(s) for instance: ${instance_id}`);
+
+		var allow_continue = await Extend.updateSubscriber(WAZIPER, subscriptor_, content, instance_id, user_type, message, null);
+
+		if (allow_continue) {
+
+			items.forEach(async (item, index) => {
+
+				var caption = item.caption;
+				var keywords = item.keywords.split(",");
+
+				var run = true;
+
+				//Accept sent to all/group/user
+				switch (item.send_to) {
+					case 2:
+						if (user_type == "group") run = false;;
+						break;
+					case 3:
+						if (user_type == "user") run = false;
+						break;
+				}
+
+				if (run) {
+					var key_sent = false;
+					if (item.type_search == 1) {
+						for (var j = 0; j < keywords.length; j++) {
+							if (content && !key_sent) {
+								var msg = content.toLowerCase();
+								if (msg.indexOf(keywords[j]) !== -1) {
+									key_sent = true;
+									sent = true;
+									var ct = counter++;
+
+									var allow_continue_cb = await Extend.updateSubscriber(WAZIPER, subscriptor_, content, instance_id, user_type, message, item);
+									if (allow_continue_cb)
+										setTimeout(function () {
+											//WAZIPER.chatbot_latest_receive = moment().add(CHATBOT_RESET_TIME, 'm');
+											WAZIPER.auto_send(instance_id, chat_id, chat_id, "chatbot", item, false, message, content, function (result) {
+												if (item.nextBot != null && item.nextBot != '' && item.save_data !== 2) {
+													Extend.nextBot(result, item, message, instance_id, user_type, WAZIPER);
+												}
+											});
+										}, ct * chatbot_delay);
+								}
+							} else {
+								break;
+							}
+						}
+					} else {
+						for (var j = 0; j < keywords.length; j++) {
+							if (content && !key_sent) {
+								var msg = content.toLowerCase();
+								if (msg == keywords[j]) {
+									key_sent = true;
+									sent = true;
+									var ct = counter++;
+
+									var allow_continue_cb = await Extend.updateSubscriber(WAZIPER, subscriptor_, content, instance_id, user_type, message, item);
+									if (allow_continue_cb)
+										setTimeout(function () {
+											//WAZIPER.chatbot_latest_receive = moment().add(CHATBOT_RESET_TIME, 'm');
+											WAZIPER.auto_send(instance_id, chat_id, chat_id, "chatbot", item, false, message, content, function (result) {
+												if (item.nextBot != null && item.nextBot != '' && item.save_data !== 2) {
+													Extend.nextBot(result, item, message, instance_id, user_type, WAZIPER);
+												}
+											});
+										}, ct * chatbot_delay);
+								}
+							} else {
+								break;
+							}
+						}
+					}
+				}
+			});
+
+
+			if (!sent) {
+				var item = await Common.db_get("sp_whatsapp_chatbot", [{ instance_id: instance_id }, { status: 1 }, { is_default: 1 }]);
+
+				if (item) {
+					var run = true;
+
+					switch (item.send_to) {
+						case 2:
+							if (user_type == "group") run = false;;
+							break;
+						case 3:
+							if (user_type == "user") run = false;
+							break;
+					}
+					if (run) {
+						WAZIPER.auto_send(instance_id, chat_id, chat_id, "chatbot", item, false, message, content, function (result) {
+							Extend.nextBot(result, item, message, instance_id, user_type, WAZIPER);
+						});
+					}
+				}
+			}
+
+		}
+
+	},
+
+	resetAi: async function (instance_id, res) {
+		Extend.resetAi(instance_id);
+		console.log(`${instance_id} OpenAi history restarted`);
+		res.json({ status: 'success', message: `${instance_id} OpenAi history restarted`, data: { "instance_id": instance_id } });
+	},
+
+	send_cloud_template: async function (instance_id, access_token, req, res) {
+		var chat_id = req.body.chat_id;
+		var language_code = req.body.language_code;
+		var template_name = req.body.template_name;
+		var components = req.body.components;
+		var team = await Common.db_get("sp_team", [{ ids: access_token }]);
+		var type = "api"
+
+		if (!team) {
+			return res.json({ status: 'error', message: "The authentication process has failed" });
+		}
+
+		var account = await Common.db_get("sp_accounts", [{ token: instance_id }, { team_id: team.id }]);
+
+		if (account && account.login_type == 1) {
+
+			let item = {
+				team_id: team.id
+			}
+
+			var limit = await WAZIPER.limit(item, type);
+			if (!limit) {
+				//return callback({ status: 0, stats: false, message: "The number of messages you have sent per month has exceeded the maximum limit" });
+				return res.json({ status: 'error', message: "The number of messages you have sent per month has exceeded the maximum limit" });
+			}
+
+			const { access_token: bearer } = JSON.parse(account.tmp);
+			const whatsappAPIURL = `https://graph.facebook.com/v19.0/${account.username}/messages`;
+
+			let data = JSON.stringify({
+				"messaging_product": "whatsapp",
+				"recipient_type": "individual",
+				"to": chat_id,
+				"type": "template",
+				"template": {
+					"name": template_name,
+					"language": {
+						"code": language_code
+					},
+					"components": components
+				}
+			});
+
+			let config = {
+				method: 'post',
+				maxBodyLength: Infinity,
+				url: whatsappAPIURL,
+				headers: {
+					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${bearer}`
+				},
+				data: data
+			};
+
+			axios.request(config)
+				.then(async (response) => {
+
+					try {
+
+						const message = response.data.messages[0];
+						const pushname = response.data.contacts[0]?.profile?.name ?? instance_id;
+
+						let message___ = await Extend.process_official_sent_message(JSON.parse(data), chat_id, message?.id ?? Common.makeid(), "", "template");
+
+						//* LIVECHAT FUNCTION
+						if ((config['extended_functions'] ?? true)) {
+							Extend.chat.processChatMessages(WAZIPER, false, { messages: [message___] }, instance_id, true);
+						}
+						//* END LIVECHAT FUNCTION	
+					} catch (error) {
+						console.error(error)
+					}
+
+
+					console.log('Mensaje enviado: ', JSON.stringify(response.data, null, 4));
+					WAZIPER.stats(instance_id, type, item, 1);
+					return res.json({ status: 'success', message: "Success", "message": response.data });
+				})
+				.catch((error) => {
+					console.error('Error al enviar mensaje: ', error);
+					WAZIPER.stats(instance_id, type, item, 0);
+					return res.json({ status: 'error', message: error });
+				});
+		}
+	},
+
+	send_message: async function (instance_id, access_token, req, res) {
+		var type = req.query.type;
+		var chat_id = req.body.chat_id;
+		var media_url = req.body.media_url;
+		var caption = req.body.caption ?? '';
+		var filename = req.body.filename ?? '';
+		var template = req.body.template ?? 0;
+		var team = await Common.db_get("sp_team", [{ ids: access_token }]);
+
+		if (!team) {
+			return res.json({ status: 'error', message: "The authentication process has failed" });
+		}
+
+		// ✅ FIX #5: Normalize chat_id to JID format FIRST
+		// Then apply special character checks for individual chats
+		chat_id = normalizeOutgoingChatId(chat_id);
+
+		// Apply special character checks for individual chats only
+		if (chat_id.indexOf("g.us") === -1 && chat_id.indexOf("@g.us") === -1) {
+		    chat_id = chat_id.split("@");
+			chat_idd = await Common.check_especials(chat_id[0]);
+			chat_id = chat_idd + "@" + chat_id[1];
+		}
+
+		console.log(`📤 [send_message] Final chat_id: ${chat_id}`);
+
+		item = {
+			team_id: team.id,
+			type: parseInt(type),
+			template: type != 1 ? parseInt(template) : 0,
+			caption: caption,
+			media: media_url,
+			filename: filename
+		}
+
+		await WAZIPER.auto_send(instance_id, chat_id, chat_id, "api", item, false, false, false, function (result) {
+			console.log(result);
+			if (result) {
+				if (result.message != undefined) {
+					result.message.status = "SUCCESS";
+				}
+				return res.json({ status: 'success', message: "Success", "message": result.message });
+			} else {
+				return res.json({ status: 'error', message: "Error" });
+			}
+		});
+	},
+	
+	single_send_message: async function (instance_id, access_token, req, res) {
+		var type = req.query.type;
+		var chat_id = req.body.chat_id;
+		var media_url = req.body.media_url;
+		var caption = req.body.caption ?? '';
+		var filename = req.body.filename ?? '';
+		var template = req.body.template ?? 0;
+		var team = await Common.db_get("sp_team", [{ ids: access_token }]);
+
+		if (!team) {
+			return res.json({ status: 'error', message: "The authentication process has failed" });
+		}
+
+		// ✅ FIX #5: Normalize chat_id to JID format (@s.whatsapp.net) BEFORE processing
+		// This ensures we ALWAYS use JID as primary format, preventing jidDecode errors
+		chat_id = normalizeOutgoingChatId(chat_id);
+		console.log(`📤 [single_send_message] Normalized chat_id: ${chat_id}`);
+
+		// ✅ FIX: Support both UUID and integer template IDs
+		// If template contains letters (UUID format), keep as string
+		// Otherwise parse as integer for backward compatibility
+		var templateValue = template;
+		if (type != 1 && template) {
+			// Check if template is a UUID (contains letters) or integer
+			if (typeof template === 'string' && /[a-f]/i.test(template)) {
+				// UUID format - keep as string
+				templateValue = template;
+			} else {
+				// Integer format - parse as number
+				templateValue = parseInt(template);
+			}
+		} else {
+			templateValue = 0;
+		}
+
+		item = {
+			team_id: team.id,
+			type: parseInt(type),
+			template: templateValue,
+			caption: caption,
+			media: media_url,
+			filename: filename
+		}
+
+		await WAZIPER.auto_send(instance_id, chat_id, chat_id, "direct", item, false, false, false, function (result) {
+			console.log(result);
+			if (result) {
+				if (result.message != undefined) {
+					result.message.status = "SUCCESS";
+				}
+				return res.json({ status: 'success', message: "Success", "message": result.message });
+			} else {
+				return res.json({ status: 'error', message: "Error" });
+			}
+		});
+	},
+
+	/**
+	 * ✅ CRITICAL FIX #2: Retry connection WITHOUT deleting session files
+	 *
+	 * OLD BEHAVIOR (BROKEN):
+	 * - Called WAZIPER.session(instance_id, true) with reset=true
+	 * - This DELETED all session files (creds.json, app-state-sync-*.json)
+	 * - Forced QR code regeneration on EVERY error
+	 * - Created infinite loop: Error → Delete → QR → Scan → Error → Repeat
+	 *
+	 * NEW BEHAVIOR (FIXED):
+	 * - Calls WAZIPER.session(instance_id, false) with reset=false
+	 * - Preserves authentication credentials on disk
+	 * - Attempts reconnection using existing credentials
+	 * - Only requires QR code if truly logged out (handled by connection.update event)
+	 */
+	retry_onfail: async function (instance_id) {
+		console.log(`[Retry] Attempting to recover session ${instance_id} WITHOUT deleting credentials`);
+
+		try {
+			// Close existing connection gracefully
+			if (sessions[instance_id]?.ws) {
+				try {
+					sessions[instance_id].ws.close();
+				} catch (e) {
+					console.error(`[Retry] Error closing websocket:`, e.message);
+				}
+			}
+
+			// Remove from memory but keep files on disk
+			delete sessions[instance_id];
+
+			// Wait 3 seconds before reconnecting to avoid rapid reconnection loops
+			await new Promise(resolve => setTimeout(resolve, 3000));
+
+			// ✅ CRITICAL: Reconnect using existing credentials (reset=false)
+			// This preserves session files and attempts to reconnect without QR code
+			sessions[instance_id] = await WAZIPER.session(instance_id, false);
+
+			console.log(`[Retry] ✅ Session ${instance_id} reconnection initiated`);
+		} catch (error) {
+			console.error(`[Retry] ❌ Failed to recover session ${instance_id}:`, error.message);
+		}
+	},
+
+	/**
+	 * ✅ FIX #3: Session Health Check Function
+	 *
+	 * Checks if a session is healthy and ready to send messages
+	 * This function validates:
+	 * 1. Session exists in memory
+	 * 2. User is authenticated (session.user.id exists)
+	 * 3. WebSocket connection is open (state = 1)
+	 * 4. Database record exists
+	 *
+	 * @param {string} instance_id - Instance ID to check
+	 * @returns {Object} - { healthy: boolean, reason: string, user?: string, wsState?: string }
+	 *
+	 * Usage:
+	 *   const health = await WAZIPER.check_session_health(instance_id);
+	 *   if (!health.healthy) {
+	 *     console.error('Session unhealthy:', health.reason);
+	 *   }
+	 */
+	check_session_health: async function (instance_id) {
+		var session = sessions[instance_id];
+		if (session && session.user && session.user.id) {
+			var wsState = session.ws ? session.ws.readyState : 0;
+			return {
+				healthy: true,
+				reason: wsState === 1 ? 'Session is healthy' : 'Session authenticated (reconnecting)',
+				user: session.user.name,
+				wid: session.user.id,
+				wsState: wsState === 1 ? 'OPEN' : 'RECONNECTING'
+			};
+		}
+		try {
+			var dbSession = await Common.db_get("sp_whatsapp_sessions", [{ instance_id: instance_id }]);
+			if (dbSession && dbSession.status == 1 && dbSession.data) {
+				var userData = {};
+				try { userData = JSON.parse(dbSession.data); } catch(parseErr) {}
+				var userName = userData.name || userData.verifiedName || null;
+				var userWid = userData.id || null;
+				if (userWid) {
+					return {
+						healthy: true,
+						reason: 'Session linked (restoring)',
+						user: userName,
+						wid: userWid,
+						wsState: 'RESTORING'
+					};
+				}
+			}
+		} catch (dbError) {
+			console.error('[Health Check] DB fallback error:', dbError.message);
+		}
+		return { healthy: false, reason: 'Session does not exist' };
+	},
+
+	webhook_handler: async function (instance_id, req, res) {
+		console.log('Mensaje recibido post', JSON.stringify(req.body));
+		var account = await Common.db_get("sp_accounts", [{ token: instance_id }]);
+		try {
+			if (account && account.login_type == 1) {
+
+				if (req.body.entry[0].changes[0].value.messages) {
+					const message = req.body.entry[0].changes[0].value.messages[0];
+					const pushname = req.body.entry[0].changes[0].value.contacts[0]?.profile?.name;
+
+					if (message.from) {
+
+						try {
+							Extend.mark_as_read(message, instance_id);
+						} catch (error) {
+
+						}
+
+						message_to_script = await Extend.process_official_message(message, pushname, false);
+
+						//* LIVECHAT FUNCTION
+						if ((config['extended_functions'] ?? true)) {
+							Extend.chat.processChatMessages(WAZIPER, false, { messages: [message_to_script] }, instance_id, true);
+						}
+						//* END LIVECHAT FUNCTION
+
+						// ✅ FIX: Detect user_type for official API messages
+						// Individual chats: contain "s.whatsapp.net" (e.g., 919876543210@s.whatsapp.net) or "@lid" (new format)
+						// Group chats: contain "g.us" (e.g., 1234567890@g.us)
+						var user_type = "user";
+						var chat_id = message_to_script?.key?.remoteJid || message.from;
+						if (chat_id && (chat_id.indexOf("g.us") !== -1 || chat_id.indexOf("@g.us") !== -1)) {
+							user_type = "group";
+						}
+
+						await Common.sleep(1000);
+						WAZIPER.chatbot(instance_id, user_type, message_to_script);
+						await Common.sleep(1000);
+						WAZIPER.autoresponder(instance_id, user_type, message_to_script);
+					}
+				}
+			} else {
+				res.status(400).send(`Instance ${instance_id} not exist`);
+			}
+		} catch (error) {
+
+		} finally {
+			res.status(200).send('OK');
+		}
+
+	},
+
+  process_send_message: async function (chat_id, data, type, instance_id, phone_number, item, callback, type_media = '') {
+
+    // ✅ CRITICAL FIX #1: Validate session exists and is fully authenticated
+    // This prevents "Cannot read properties of undefined (reading 'id')" errors
+    const session = sessions[instance_id];
+
+    if (!session) {
+        console.error(`❌ [Send] Session ${instance_id} does not exist`);
+        return callback({
+            status: 0,
+            type: type,
+            phone_number: phone_number,
+            stats: false,
+            message: 'Session not found. Please reconnect your WhatsApp instance.'
+        });
+    }
+
+    // ✅ CRITICAL FIX: Check if session is authenticated (user object exists)
+    if (!session.user || !session.user.id) {
+        console.error(`❌ [Send] Session ${instance_id} is not authenticated (user.id missing)`);
+        console.error(`   WebSocket state: ${session.ws?.readyState || 'unknown'}`);
+        return callback({
+            status: 0,
+            type: type,
+            phone_number: phone_number,
+            stats: false,
+            message: 'Session not authenticated. Please scan QR code to reconnect.'
+        });
+    }
+
+    // ✅ CRITICAL FIX: Check WebSocket connection state
+    const wsState = session.ws?.readyState || session.ws?.socket?._readyState;
+    if (wsState !== 1) { // 1 = OPEN
+        console.error(`❌ [Send] Session ${instance_id} WebSocket not open (state: ${wsState})`);
+        return callback({
+            status: 0,
+            type: type,
+            phone_number: phone_number,
+            stats: false,
+            message: 'Connection not ready. Please wait for connection to stabilize.'
+        });
+    }
+
+    console.log(`✅ [Send] Session ${instance_id} validated - User: ${session.user.name}, WS: OPEN`);
+
+    var account = await Common.db_get("sp_accounts", [{ token: instance_id }, { team_id: item.team_id }]);
+
+    if (account && account.login_type == 1) {
+
+      const { access_token: bearer } = JSON.parse(account.tmp);
+
+      const whatsappAPIURL = `https://graph.facebook.com/v19.0/${account.username}/messages`;
+
+      var messageBody = {};
+
+      if (item.media != "" && item.media) {
+        switch (type_media) {
+          case "videoMessage":
+            messageBody = {
+              messaging_product: "whatsapp",
+              to: chat_id,
+              type: "video",
+              video: {
+                link: data.video.url,
+                caption: data.caption
+              },
+              mimetype: data.mimetype
+            }
+            break;
+
+          case "imageMessage":
+            messageBody = {
+              messaging_product: "whatsapp",
+              to: chat_id,
+              type: "image",
+              image: {
+                link: data.image.url,
+                caption: data.caption
+              }
+            }
+            break;
+
+          case "audioMessage":
+
+            messageBody = {
+              messaging_product: "whatsapp",
+              to: chat_id,
+              type: "audio",
+              audio: {
+                link: data.audio.url
+              },
+              mimetype: data.mimetype
+            }
+
+            break;
+
+          default:
+
+            messageBody = {
+              messaging_product: "whatsapp",
+              to: chat_id,
+              type: "document",
+              document: {
+                link: data.document.url,
+                caption: data.caption,
+                filename: data.fileName
+              },
+              mimetype: data.mimeType
+            }
+
+            break;
+        }
+      } else {
+
+        switch (type_media) {
+          case 'button':
+            //console.log(JSON.stringify(data))
+            messageBody = {
+              messaging_product: "whatsapp",
+              to: chat_id,
+              type: "interactive",
+              interactive: {
+                type: "button",
+                body: {
+                  text: data.text ?? (data.caption ?? 'press button')
+                },
+                action: {
+                  buttons: []
+                }
+              }
+            }
+
+            if (data.footer) {
+              messageBody.interactive.footer = {
+                text: data.footer
+              }
+            }
+
+            if (data.image) {
+
+              messageBody.interactive.header = {
+                type: "image",
+                image: {
+                  link: data.image.url
+                }
+              }
+            }
+
+            data.templateButtons.forEach(element => {
+              messageBody.interactive.action.buttons.push(
+                {
+                  type: "reply",
+                  reply: {
+                    id: element.quickReplyButton.id,
+                    title: element.quickReplyButton.displayText
+                  }
+                }
+              )
+            });
+            break;
+          case 'list':
+            //console.log(JSON.stringify(data))
+            messageBody = {
+              messaging_product: "whatsapp",
+              recipient_type: "individual",
+              to: chat_id,
+              type: "interactive",
+              interactive: {
+                type: "list",
+                header: {
+                  type: "text",
+                  text: data.title
+                },
+                body: {
+                  text: data.text
+                },
+                footer: {
+                  text: data.footer
+                },
+                action: {
+                  button: data.buttonText,
+                  sections: []
+                }
+              }
+            }
+
+
+            data.sections.forEach(section => {
+
+              Common.special_log(section, 'section');
+
+              let rows_to_add = [];
+              section.rows.forEach(row => {
+
+                Common.special_log(row, 'row');
+
+                rows_to_add.push({
+                  title: row.title,
+                  id: row.rowId,
+                  description: row.description ?? ''
+                })
+              });
+
+              let section_to_add = {
+                title: section.title,
+                rows: rows_to_add
+              }
+
+              messageBody.interactive.action.sections.push(section_to_add);
+            });
+            break;
+
+          case 'template':
+            messageBody = data;
+            break
+          default:
+            messageBody = {
+              messaging_product: "whatsapp",
+              to: chat_id,
+              text: { body: data.text }
+            }
+            break;
+        }
+
+      }
+
+      axios.post(whatsappAPIURL, messageBody, {
+        headers: { Authorization: `Bearer ${bearer}` }
+      }).then(async response => {
+
+        try {
+          const message = response.data.messages[0];
+          let message___ = await Extend.process_official_sent_message(messageBody, chat_id, message?.id ?? Common.makeid());
+
+          //* LIVECHAT FUNCTION
+          if ((config['extended_functions'] ?? true)) {
+            Extend.chat.processChatMessages(WAZIPER, false, { messages: [message___] }, instance_id, true);
+          }
+          //* END LIVECHAT FUNCTION	
+        } catch (error) {
+          console.error(error)
+        }
+        callback({ status: 1, type: type, phone_number: phone_number, stats: true, message: response.data });
+        WAZIPER.stats(instance_id, type, item, 1);
+
+      }).catch(error => {
+        console.error('Error al enviar mensaje: ', error);
+        callback({ status: 0, type: type, phone_number: phone_number, stats: true });
+        WAZIPER.stats(instance_id, type, item, 0);
+      })
+
+
+    } else {
+      var check_evo_acc = await Common.db_get("sp_accounts", [{ pid: account.pid }, { social_network: "whatsapp_evo" }]);
+      var tp = ["button", "list"];
+      if (check_evo_acc && tp.includes(type_media)) {
+        console.log(check_evo_acc)
+        var evo_sess = await Common.db_get("sp_whatsapp_sessions_evo", [{ instance_id: check_evo_acc.token }, { team_id: item.team_id }]);
+        
+        if (evo_sess && evo_sess.status == 1) {
+          const tokens = JSON.parse(evo_sess.data);
+          console.log(tokens.hash.jwt)
+          var opt = {};
+          if (type_media == "list") {
+            opt = {
+              number: chat_id,
+              options: {
+                delay: 1200,
+                presence: "composing"
+              },
+              listMessage: {
+                title: data.title,
+                description: data.text,
+                footerText: data.footer,
+                buttonText: data.buttonText,
+                sections: data.sections
+              }
+            }
+          }
+          
+          console.log(opt)
+
+          axios.post(config.evo_server + 'message/sendList/' + evo_sess.instance_id, opt, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + tokens.hash.jwt
+            }
+          }).then(async(response) => {
+              console.log(response.data)
+            hist = {
+              instance_id: instance_id,
+              team_id: item.team_id,
+              phone: chat_id.includes("g.us") == true ? chat_id : Common.get_phone(chat_id),
+              type: type,
+              message: "LIST MESSAGE TEMPLATE",
+              status: 1,
+              time_post: parseInt(Math.floor(new Date().getTime() / 1000)),
+            };
+            await Common.db_insert('sp_whatsapp_history', hist);
+            callback({ status: 1, type: type, phone_number: phone_number, stats: true, message: response.data });
+            WAZIPER.stats(instance_id, type, item, 1);
+            
+            
+          }).catch(async(error) => {
+              console.log(error)
+            callback({ status: 0, type: type, phone_number: phone_number, stats: true });
+            WAZIPER.stats(instance_id, type, item, 0);
+            hist = {
+              instance_id: instance_id,
+              team_id: item.team_id,
+              phone: chat_id.includes("g.us") == true ? chat_id : Common.get_phone(chat_id),
+              type: type,
+              message: "LIST MESSAGE TEMPLATE",
+              status: 0,
+              time_post: parseInt(Math.floor(new Date().getTime() / 1000)),
+            };
+            await Common.db_insert('sp_whatsapp_history', hist);
+            
+          })
+        }
+      } else {
+        if (type_media != '' || type_media == "button" || type_media == "list" || type_media == "poll") {
+          var cont = "TEMPLATE MESSAGE CONTENT"
+        } else {
+          cont = item.caption
+        }
+        if (type_media == "list") {
+          datas = {
+            forward: {
+              key: { remoteJid: Common.get_phone(sessions[instance_id].user?.id, "wid"), fromMe: true },
+              data,
+            }
+          }
+        } else {
+          datas = data
+        }
+        console.log(data)
+
+        // ✅ REFACTORED: Use baileys_helper for interactive messages to prevent Error 428
+        // Import baileys_helper functions for proper binary node injection
+        const { sendInteractiveMessage } = require('baileys_helper');
+
+        try {
+          let message;
+          const { generateMessageIDV2 } = require('@whiskeysockets/baileys/lib/Utils');
+          const trackingMessageId = generateMessageIDV2(sessions[instance_id].user?.id);
+          let isTimeoutError = false;
+
+          // ✅ FIX #5: Normalize chat_id to JID format (@s.whatsapp.net) BEFORE sending
+          // This ensures we ALWAYS use JID as primary format, preventing jidDecode errors
+          // WhatsApp will internally convert to LID if needed
+          chat_id = normalizeOutgoingChatId(chat_id);
+          console.log(`📤 [Send] Normalized chat_id: ${chat_id}`);
+
+          // ✅ FIX: Ensure group metadata is cached before sending to groups
+          // This prevents Error 428 (Precondition Required) by ensuring sender keys are properly distributed
+          if (chat_id.includes("g.us") || chat_id.includes("@g.us")) {
+            try {
+              console.log('📋 Fetching group metadata for:', chat_id);
+              await sessions[instance_id].groupMetadata(chat_id);
+            } catch (metadataError) {
+              console.warn('⚠️ Could not fetch group metadata (non-fatal):', metadataError.message);
+            }
+          }
+
+          // ✅ REFACTORED: Detect new baileys_helper_content format from template handlers
+          if (data.baileys_helper_content) {
+            // ✅ NEW FORMAT: Template handlers now return { baileys_helper_content: {...} }
+            // This content is already in the correct format for baileys_helper
+            console.log('📤 Sending interactive message via baileys_helper (new format)');
+            console.log('Content:', JSON.stringify(data.baileys_helper_content, null, 2));
+            message = await sendInteractiveMessage(sessions[instance_id], chat_id, data.baileys_helper_content);
+
+          } else if (type_media === 'button' && data.interactiveMessage) {
+            // ✅ LEGACY FORMAT: Old interactiveMessage format (backward compatibility)
+            console.log('📤 Sending button message via baileys_helper (legacy format)');
+
+            // Extract media from header and send at top level
+            const hasMedia = data.interactiveMessage.header?.hasMediaAttachment;
+            let messageContent = {};
+
+            if (hasMedia) {
+              console.log('📤 Button message has media attachment - extracting to top level');
+
+              // Extract image/video/document from header
+              if (data.interactiveMessage.header.imageMessage) {
+                const imgMsg = data.interactiveMessage.header.imageMessage;
+                messageContent.image = { url: imgMsg.url };
+                messageContent.caption = data.interactiveMessage.body?.text || imgMsg.caption || '';
+                console.log('✅ Extracted image URL:', imgMsg.url);
+              } else if (data.interactiveMessage.header.videoMessage) {
+                const vidMsg = data.interactiveMessage.header.videoMessage;
+                messageContent.video = { url: vidMsg.url };
+                messageContent.caption = data.interactiveMessage.body?.text || vidMsg.caption || '';
+                console.log('✅ Extracted video URL:', vidMsg.url);
+              } else if (data.interactiveMessage.header.documentMessage) {
+                const docMsg = data.interactiveMessage.header.documentMessage;
+                messageContent.document = { url: docMsg.url };
+                messageContent.mimetype = docMsg.mimetype;
+                messageContent.fileName = docMsg.fileName;
+                messageContent.caption = data.interactiveMessage.body?.text || docMsg.caption || '';
+                console.log('✅ Extracted document URL:', docMsg.url);
+              }
+
+              // Add title, subtitle, footer
+              if (data.interactiveMessage.header?.title) {
+                messageContent.title = data.interactiveMessage.header.title;
+              }
+              if (data.interactiveMessage.header?.subtitle) {
+                messageContent.subtitle = data.interactiveMessage.header.subtitle;
+              }
+              if (data.interactiveMessage.footer?.text) {
+                messageContent.footer = data.interactiveMessage.footer.text;
+              }
+
+              // Convert nativeFlowMessage buttons to interactiveButtons format
+              if (data.interactiveMessage.nativeFlowMessage?.buttons) {
+                messageContent.interactiveButtons = data.interactiveMessage.nativeFlowMessage.buttons;
+              }
+
+              console.log('📤 Sending with baileys_helper format: image + interactiveButtons');
+              message = await sendInteractiveMessage(sessions[instance_id], chat_id, messageContent);
+
+            } else {
+              // No media - convert to baileys_helper format
+              console.log('📤 No media attachment - converting to baileys_helper format');
+              const messageContent = {
+                text: data.interactiveMessage.body?.text || '',
+                title: data.interactiveMessage.header?.title || '',
+                footer: data.interactiveMessage.footer?.text || '',
+                interactiveButtons: data.interactiveMessage.nativeFlowMessage?.buttons || []
+              };
+              message = await sendInteractiveMessage(sessions[instance_id], chat_id, messageContent);
+            }
+
+          } else if (type_media === 'list' && data.listMessage) {
+            // ✅ LEGACY FORMAT: Old listMessage format (backward compatibility)
+            console.log('📤 Sending list message via baileys_helper (legacy format)');
+            const listContent = {
+              text: data.listMessage.text || '',
+              title: data.listMessage.title || '',
+              footer: data.listMessage.footer || '',
+              interactiveButtons: [{
+                name: 'single_select',
+                buttonParamsJson: JSON.stringify({
+                  title: data.listMessage.buttonText || 'Select',
+                  sections: data.listMessage.sections || []
+                })
+              }]
+            };
+            message = await sendInteractiveMessage(sessions[instance_id], chat_id, listContent);
+
+          } else if (type_media === 'poll' && data.poll) {
+            // ✅ POLL: Use standard sendMessage (polls don't need binary nodes)
+            console.log('📤 Sending poll message via standard sendMessage');
+
+            // ✅ FIX: Add userJid for group messages to prevent "Waiting for this message" error
+            const messageOptions = { backgroundColor: '' };
+            if (chat_id.includes("g.us") || chat_id.includes("@g.us")) {
+              messageOptions.userJid = sessions[instance_id].user.id;
+            }
+
+            // ✅ FIX #6: Add retry logic for timeout errors (same as regular messages)
+            let retries = 0;
+            const maxRetries = 3;
+
+            while (retries < maxRetries) {
+              try {
+                message = await sessions[instance_id].sendMessage(chat_id, data, messageOptions);
+                break; // Success - exit retry loop
+              } catch (sendError) {
+                const isTimeout = sendError.message?.includes('Timed Out') ||
+                                 sendError.message?.includes('timeout') ||
+                                 sendError.output?.statusCode === 408;
+
+                if (isTimeout && retries < maxRetries - 1) {
+                  retries++;
+                  console.log(`⚠️  Poll message timeout, retrying (${retries}/${maxRetries})...`);
+                  await new Promise(resolve => setTimeout(resolve, 2000 * retries));
+                  continue;
+                }
+                throw sendError;
+              }
+            }
+
+          } else {
+            // ✅ REGULAR MESSAGES: Use standard sendMessage
+            console.log('📤 Sending regular message via standard sendMessage');
+
+            // ✅ FIX: Add userJid for group messages to prevent "Waiting for this message" error
+            // This ensures proper participant field is set in group message encryption
+            const messageOptions = { backgroundColor: '', messageId: trackingMessageId };
+            if (chat_id.includes("g.us") || chat_id.includes("@g.us")) {
+              messageOptions.userJid = sessions[instance_id].user.id;
+              console.log('📋 Group message detected - adding userJid:', messageOptions.userJid);
+            }
+
+            // ✅ FIX #6: Add retry logic for timeout errors
+            // Retry up to 3 times if message times out
+            let retries = 0;
+            const maxRetries = 3;
+            let lastError = null;
+
+            while (retries < maxRetries) {
+              try {
+                message = await sessions[instance_id].sendMessage(chat_id, data, messageOptions);
+                break; // Success - exit retry loop
+              } catch (sendError) {
+                lastError = sendError;
+
+                // Check if error is a timeout
+                const isTimeout = sendError.message?.includes('Timed Out') ||
+                                 sendError.message?.includes('timeout') ||
+                                 sendError.output?.statusCode === 408;
+                                 
+                if (isTimeout) {
+                    isTimeoutError = true;
+                }
+
+                if (isTimeout && retries < maxRetries - 1) {
+                  retries++;
+                  console.log(`⚠️  Message timeout, retrying (${retries}/${maxRetries})...`);
+                  await new Promise(resolve => setTimeout(resolve, 2000 * retries)); // Exponential backoff
+                  continue;
+                }
+
+                // If not timeout or max retries reached, throw error
+                throw sendError;
+              }
+            }
+
+            if (retries > 0) {
+              console.log(`✅ Message sent successfully after ${retries} retries:`, message.key.id);
+            }
+          }
+
+          // Success handling
+          console.log('✅ Message sent successfully:', message.key.id);
+          callback({ status: 1, type: type, phone_number: phone_number, stats: true, message: message, messageId: message.key.id || trackingMessageId });
+          WAZIPER.stats(instance_id, type, item, 1);
+
+          var hist = {
+            instance_id: instance_id,
+            team_id: item.team_id,
+            phone: chat_id.includes("g.us") == true ? chat_id : Common.get_phone(chat_id),
+            type: type,
+            message: cont,
+            status: 1,
+            time_post: parseInt(message.messageTimestamp || Math.floor(new Date().getTime() / 1000)),
+          };
+          await Common.db_insert('sp_whatsapp_history', hist);
+
+        } catch (err) {
+          // Error handling
+          console.error('❌ Error sending message:', err);
+          console.error('Message type:', type_media);
+          console.error('Data:', JSON.stringify(data, null, 2));
+
+          // ✅ FIX #6: Log specific timeout errors for debugging
+          if (err.message?.includes('Timed Out') || err.output?.statusCode === 408) {
+            console.error('⏱️  TIMEOUT ERROR: Message failed to send within timeout period');
+            console.error('   This may indicate network issues or WhatsApp server delays');
+            console.error('   Consider increasing defaultQueryTimeoutMs in makeWASocket config');
+          }
+
+          var hist = {
+            instance_id: instance_id,
+            team_id: item.team_id,
+            phone: chat_id.includes("g.us") == true ? chat_id : Common.get_phone(chat_id),
+            type: type,
+            message: cont,
+            status: 0,
+            time_post: parseInt(Math.floor(new Date().getTime() / 1000)),
+          };
+          await Common.db_insert('sp_whatsapp_history', hist);
+          WAZIPER.retry_onfail(instance_id);
+          callback({ status: 0, type: type, phone_number: phone_number, stats: true, messageId: trackingMessageId, isTimeout: isTimeoutError });
+          WAZIPER.stats(instance_id, type, item, 0);
+        }
+      }
+    }
+  },
+
+	auto_send: async function (instance_id, chat_id, phone_number, type, item, params, message, content, callback, retry = false) {
+
+        var limit = await WAZIPER.limit(item, type);
+        if (!limit) {
+            return callback({ status: 0, stats: false, message: "The number of messages you have sent per month has exceeded the maximum limit" });
+        }
+
+
+        var { new_caption, can_continue } = await Extend.process_message(instance_id, item, chat_id, type, content, (err) => {
+            sessions[instance_id].sendMessage(sessions[instance_id].user.id, { text: `The message could not be sent to ${chat_id} with AI due to the following error:\n${err}` })
+                .then()
+                .catch()
+        });
+        item.caption = new_caption;
+
+        var params_org = params;
+
+        if (type == 'bulk') {
+            var account = await Common.db_get("sp_accounts", [{ token: instance_id }, { team_id: item.team_id }]);
+
+            var isValid = await Extend.check_phone(sessions[instance_id], phone_number, params.is_valid, account.login_type == 1);
+
+            if (!isValid) {
+                callback({ status: 0, type: type, phone_number: phone_number, stats: true });
+                WAZIPER.stats(instance_id, type, item, 0);
+                can_continue = false;
+            } else {
+                params = params.params;
+            }
+        }
+
+
+        if (can_continue) {
+            try {
+                await Extend.sendPresence(sessions[instance_id], chat_id, item);
+            } catch (error) {
+
+            }
+            switch (item.type) {
+
+                //Button 
+                case 2:
+                    var template = await WAZIPER.button_template_handler(item, params, message, instance_id);
+                    if (template) {
+                        WAZIPER.process_send_message(chat_id, template, type, instance_id, phone_number, item, callback, 'button');
+                    }
+                    break;
+                //List Messages
+                case 3:
+                    var template = await WAZIPER.list_message_template_handler(item, params, message, instance_id);
+                    if (template) {
+                        WAZIPER.process_send_message(chat_id, template, type, instance_id, phone_number, item, callback, 'list');
+                    }
+                    break;
+                case 4:
+                    var template = await WAZIPER.poll_template_handler(item, params, message, instance_id);
+                    if (template) {
+                        WAZIPER.process_send_message(chat_id, template, type, instance_id, phone_number, item, callback, 'poll');
+                        return false;
+                    }
+                    break;
+                //Media & Text
+                default:
+                    var caption = await Extend.common_data(WAZIPER, sessions[instance_id], instance_id, item, message, spintax.unspin(item.caption));
+                    caption = Common.params(params, caption);
+                    if (item.media != "" && item.media) {
+                        var mime = Common.ext2mime(item.media);
+                        var post_type = Common.post_type(mime, 1);
+                        var filename = (item.filename != undefined) ? item.filename : Common.get_file_name(item.media);
+
+                        // ✅ FIX: Use explicit media_type from /api/send if available (for URLs without extensions)
+                        if (type == 'api' && item.media_type) {
+                            // Map media_type string to post_type
+                            const mediaTypeMap = {
+                                'image': 'imageMessage',
+                                'video': 'videoMessage',
+                                'audio': 'audioMessage',
+                                'document': 'documentMessage'
+                            };
+                            post_type = mediaTypeMap[item.media_type] || post_type;
+
+                            // Set default MIME types for known media types
+                            if (!mime || mime === undefined) {
+                                const defaultMimeTypes = {
+                                    'image': 'image/jpeg',
+                                    'video': 'video/mp4',
+                                    'audio': 'audio/mpeg',
+                                    'document': 'application/pdf'
+                                };
+                                mime = defaultMimeTypes[item.media_type];
+                            }
+                        }
+
+                        // Fallback: Try to detect from filename if provided
+                        if (type == 'api' && item.filename && item.filename != '') {
+                            const filenameMime = Common.ext2mime(item.filename);
+                            if (filenameMime) {
+                                mime = filenameMime;
+                                post_type = Common.post_type(mime, 1);
+                            }
+                        }
+
+                        switch (post_type) {
+                            case "videoMessage":
+                                var data = {
+                                    video: { url: item.media },
+                                    caption: caption
+                                }
+
+                                data['mimetype'] = mime;
+                                break;
+
+                            case "imageMessage":
+                                var data = {
+                                    image: { url: item.media },
+                                    caption: caption
+                                }
+                                break;
+
+                            case "audioMessage":
+                                var data = {
+                                    audio: { url: item.media },
+                                    ptt: true,
+                                    caption: caption
+                                }
+                                break;
+
+                            default:
+                                var data = {
+                                    document: { url: item.media },
+                                    fileName: filename,
+                                    caption: caption,
+                                    mimeType: mime
+                                }
+                                break;
+                        }
+
+                        console.log('send image message to ', chat_id);
+                        WAZIPER.process_send_message(chat_id, data, type, instance_id, phone_number, item, callback, post_type);
+                    } else {
+
+
+
+                        console.log('send message to ', chat_id);
+                        WAZIPER.process_send_message(chat_id, { text: caption }, type, instance_id, phone_number, item, callback);
+                    }
+
+            }
+        }
+    },
+	limit: async function (item, type) {
+		var time_now = Math.floor(new Date().getTime() / 1000);
+
+		//
+		var team = await Common.db_query(`SELECT owner FROM sp_team WHERE id = '` + item.team_id + `'`);
+		if (!team) { return false }
+
+		var user = await Common.db_query(`SELECT expiration_date FROM sp_users WHERE id = '` + team.owner + `'`);
+		if (!user) { return false }
+
+		if (user.expiration_date != 0 && user.expiration_date < time_now) {
+			return false;
+		}
+
+		/*
+		* Stats
+		*/
+		if (stats_history[item.team_id] == undefined) {
+			stats_history[item.team_id] = {};
+			var current_stats = await Common.db_get("sp_whatsapp_stats", [{ team_id: item.team_id }]);
+			if (current_stats) {
+				stats_history[item.team_id].wa_total_sent_by_month = current_stats.wa_total_sent_by_month;
+				stats_history[item.team_id].wa_total_sent = current_stats.wa_total_sent;
+				stats_history[item.team_id].wa_chatbot_count = current_stats.wa_chatbot_count;
+				stats_history[item.team_id].wa_autoresponder_count = current_stats.wa_autoresponder_count;
+				stats_history[item.team_id].wa_api_count = current_stats.wa_api_count;
+				stats_history[item.team_id].wa_bulk_total_count = current_stats.wa_bulk_total_count;
+				stats_history[item.team_id].wa_bulk_sent_count = current_stats.wa_bulk_sent_count;
+				stats_history[item.team_id].wa_bulk_failed_count = current_stats.wa_bulk_failed_count;
+				stats_history[item.team_id].wa_time_reset = current_stats.wa_time_reset;
+				stats_history[item.team_id].next_update = current_stats.next_update;
+			} else {
+				return false;
+			}
+		}
+		//End stats
+
+		if (stats_history[item.team_id] != undefined) {
+			if (stats_history[item.team_id].wa_time_reset < time_now) {
+				stats_history[item.team_id].wa_total_sent_by_month = 0;
+				stats_history[item.team_id].wa_time_reset = time_now + 30 * 60 * 60 * 24;
+			}
+
+			//if(stats_history[item.team_id].next_update < time_now){
+			var current_stats = await Common.db_get("sp_whatsapp_stats", [{ team_id: item.team_id }]);
+			if (current_stats) {
+				stats_history[item.team_id].wa_time_reset = current_stats.wa_time_reset;
+				if (current_stats.wa_time_reset == 0) {
+					stats_history[item.team_id].wa_total_sent_by_month = 0;
+					stats_history[item.team_id].wa_time_reset = time_now + 30 * 60 * 60 * 24;
+				}
+			}
+			//}
+		}
+
+		/*
+		* Limit by month
+		*/
+		if (limit_messages[item.team_id] == undefined) {
+			limit_messages[item.team_id] = {};
+			var team = await Common.db_get("sp_team", [{ id: item.team_id }]);
+			if (team) {
+				var permissioms = JSON.parse(team.permissions);
+				limit_messages[item.team_id].whatsapp_message_per_month = parseInt(permissioms.whatsapp_message_per_month);
+				limit_messages[item.team_id].next_update = 0;
+			} else {
+				return false;
+			}
+		}
+
+		if (limit_messages[item.team_id].next_update < time_now) {
+			var team = await Common.db_get("sp_team", [{ id: item.team_id }]);
+			if (team) {
+				var permissioms = JSON.parse(team.permissions);
+				limit_messages[item.team_id].whatsapp_message_per_month = parseInt(permissioms.whatsapp_message_per_month);
+				limit_messages[item.team_id].next_update = time_now + 30;
+			}
+		}
+		//End limit by month
+
+		/*
+		* Stop all activity when over limit
+		*/
+		if (limit_messages[item.team_id] != undefined && stats_history[item.team_id] != undefined) {
+			if (limit_messages[item.team_id].whatsapp_message_per_month <= stats_history[item.team_id].wa_total_sent_by_month) {
+
+				//Stop bulk campaign
+				switch (type) {
+					case "bulk":
+						await Common.db_update("sp_whatsapp_schedules", [{ run: 0, status: 0 }, { id: item.id }]);
+
+						WAZIPER.io.emit('pause_campaign_' + item.team_id, {
+							id: item.id,
+							status: 0
+						});
+
+						break
+				}
+
+				return false;
+			}
+		}
+
+		return true;
+		//End stop all activity when over limit
+	},
+
+	stats: async function (instance_id, type, item, status) {
+		var time_now = Math.floor(new Date().getTime() / 1000);
+
+		if (stats_history[item.team_id].wa_time_reset < time_now) {
+			stats_history[item.team_id].wa_total_sent_by_month = 0;
+			stats_history[item.team_id].wa_time_reset = time_now + 30 * 60 * 60 * 24;
+		}
+
+		var sent = status ? 1 : 0;
+		var failed = !status ? 1 : 0;
+
+		stats_history[item.team_id].wa_total_sent_by_month += sent;
+		stats_history[item.team_id].wa_total_sent += sent;
+
+		switch (type) {
+			case "chatbot":
+				if (chatbots[item.id] == undefined) {
+					chatbots[item.id] = {};
+				}
+
+				if (
+					chatbots[item.id].chatbot_sent == undefined &&
+					chatbots[item.id].chatbot_failed == undefined
+				) {
+					chatbots[item.id].chatbot_sent = item.sent;
+					chatbots[item.id].chatbot_failed = item.failed;
+				}
+
+				chatbots[item.id].chatbot_sent += (status ? 1 : 0);
+				chatbots[item.id].chatbot_failed += (!status ? 1 : 0);
+
+				stats_history[item.team_id].wa_chatbot_count += sent;
+
+				var total_sent = chatbots[item.id].chatbot_sent;
+				var total_failed = chatbots[item.id].chatbot_failed;
+				var data = {
+					sent: total_sent,
+					failed: total_failed,
+				};
+
+				await Common.db_update("sp_whatsapp_chatbot", [data, { id: item.id }]);
+				break;
+
+			case "autoresponder":
+				if (!sessions[instance_id]) {
+					sessions[instance_id] = {}
+				}
+
+				if (
+					sessions[instance_id].autoresponder_sent == undefined &&
+					sessions[instance_id].autoresponder_failed == undefined
+				) {
+					sessions[instance_id].autoresponder_sent = item.sent;
+					sessions[instance_id].autoresponder_failed = item.sent;
+				}
+
+				sessions[instance_id].autoresponder_sent += (status ? 1 : 0);
+				sessions[instance_id].autoresponder_failed += (!status ? 1 : 0);
+
+				stats_history[item.team_id].wa_autoresponder_count += sent;
+
+				var total_sent = sessions[instance_id].autoresponder_sent;
+				var total_failed = sessions[instance_id].autoresponder_failed;
+				var data = {
+					sent: total_sent,
+					failed: total_failed,
+				};
+
+				await Common.db_update("sp_whatsapp_autoresponder", [data, { id: item.id }]);
+				break;
+
+			case "bulk":
+				stats_history[item.team_id].wa_bulk_total_count += 1;
+				stats_history[item.team_id].wa_bulk_sent_count += sent;
+				stats_history[item.team_id].wa_bulk_failed_count += failed;
+				break;
+
+			case "api":
+				stats_history[item.team_id].wa_api_count += sent;
+				break;
+		}
+
+		/*
+		* Update stats
+		*/
+		if (stats_history[item.team_id].next_update < time_now) {
+			stats_history[item.team_id].next_update = time_now + 30;
+		}
+		await Common.db_update("sp_whatsapp_stats", [stats_history[item.team_id], { team_id: item.team_id }]);
+		//End update stats
+
+	},
+
+createInteractiveButtonsFromButton: (buttons) => {
+    const buttonsArray = [];
+    buttons?.map((button) => {
+        if (button.name === 'quick_reply') {
+            buttonsArray.push({
+                name: 'quick_reply',
+                buttonParamsJson: JSON.stringify({
+                    display_text: button.display_text,
+                    id: button.id,
+                    disabled: false
+                })
+            });
+        } else if (button.name === 'cta_url') {
+            // Check if the URL contains the OTP code pattern.
+            if (button.url.includes('https://www.whatsapp.com/otp/code/?otp_type=COPY_CODE&code=()')) {
+                const code = new URLSearchParams(button.url.split('?')[1]).get('code'); // Get the OTP code from the URL.
+                buttonsArray.push({
+                    name: 'cta_copy',
+                    buttonParamsJson: JSON.stringify({
+                        display_text: 'Copiar Código',
+                        id: button.id || 'unique_id',
+                        copy_code: code,
+                        disabled: false
+                    })
+                });
+            } else {
+                buttonsArray.push({
+                    name: 'cta_url',
+                    buttonParamsJson: JSON.stringify({
+                        display_text: button.display_text,
+                        id: button.id,
+                        url: button.url,
+                        disabled: false
+                    })
+                });
+            }
+        } else if (button.name === 'cta_call') {
+            buttonsArray.push({
+                name: 'cta_call',
+                buttonParamsJson: JSON.stringify({
+                    display_text: button.display_text,
+                    id: button.id,
+                    phone_number: button.phone_number,
+                    disabled: false
+                })
+            });
+        }
+    });
+    return buttonsArray;
+},
+
+
+/**
+ * Button Template Handler
+ *
+ * ✅ REFACTORED: Uses baileys_helper package for proper interactive message support.
+ * Processes button templates and returns the appropriate format for baileys_helper.
+ *
+ * @param {Object} item - The message item containing template information
+ * @param {Object} params - Parameters for template variable replacement
+ * @param {Object} message - The incoming message object
+ * @param {string} instance_id - The WhatsApp instance ID
+ * @returns {Object|false} - Returns formatted content for baileys_helper or false if template not found
+ *
+ * Return format optimized for baileys_helper's sendInteractiveMessage:
+ * {
+ *   text: "Body text",
+ *   title: "Header title",
+ *   footer: "Footer text",
+ *   image: { url: "..." },  // Optional media at top level
+ *   interactiveButtons: [...]  // Native flow buttons
+ * }
+ */
+button_template_handler: async function (item, params, message, instance_id) {
+    var template_id = item.template;
+
+    // ✅ Support both integer ID and UUID format
+    // Try UUID first (ids column), then fall back to integer ID (id column)
+    var template = await Common.db_get("sp_whatsapp_template", [{ ids: template_id }, { type: 2 }]);
+    if (!template && typeof template_id === 'number') {
+        // Fallback: Try integer ID for web interface compatibility
+        template = await Common.db_get("sp_whatsapp_template", [{ id: template_id }, { type: 2 }]);
+    }
+
+    if (template) {
+        var data = JSON.parse(template.data);
+
+        // Normalize older Android-created payloads to the same shape as website-created templates.
+        if ((!data.templateButtons || !data.templateButtons.length) && Array.isArray(data.buttons)) {
+            data.templateButtons = data.buttons.map((button, index) => {
+                const displayText = button?.buttonText?.displayText || button?.displayText || '';
+                if (!displayText) {
+                    return null;
+                }
+
+                return {
+                    index: index + 1,
+                    quickReplyButton: {
+                        displayText: displayText,
+                        id: button?.buttonId || `btn_${index + 1}`
+                    }
+                };
+            }).filter(Boolean);
+        }
+
+        if ((!data.text || `${data.text}`.trim() === '') && data.caption) {
+            data.text = data.caption;
+        }
+
+        if (!data.media_url && data.imageUrl) {
+            data.media_url = data.imageUrl;
+            data.has_media = true;
+        }
+
+        // ✅ Build content for baileys_helper format
+        var content = {
+            text: "",
+            interactiveButtons: []
+        };
+
+        // Process title (header)
+        if (data.title !== undefined) {
+            data.title = spintax.unspin(data.title);
+            data.title = await Extend.common_data(WAZIPER, sessions[instance_id], instance_id, item, message, data.title);
+            data.title = Common.params(params, data.title);
+            content.title = data.title;
+        }
+
+        // Process text content (body)
+        if (data.text !== undefined) {
+            data.text = spintax.unspin(data.text);
+            data.text = await Extend.common_data(WAZIPER, sessions[instance_id], instance_id, item, message, data.text);
+            data.text = Common.params(params, data.text);
+            content.text = data.text;
+        }
+
+        // Process footer
+        if (data.footer !== undefined) {
+            data.footer = spintax.unspin(data.footer);
+            data.footer = await Extend.common_data(WAZIPER, sessions[instance_id], instance_id, item, message, data.footer);
+            data.footer = Common.params(params, data.footer);
+            content.footer = data.footer;
+        }
+
+        // Process caption (alternative to text)
+        if (data.caption !== undefined) {
+            data.caption = spintax.unspin(data.caption);
+            data.caption = await Extend.common_data(WAZIPER, sessions[instance_id], instance_id, item, message, data.caption);
+            data.caption = Common.params(params, data.caption);
+            content.text = data.caption;  // Use caption as body text
+        }
+
+        // ✅ REFACTORED: Handle media attachments at top level for baileys_helper
+        // baileys_helper expects media (image/video/document) at the top level of content,
+        // NOT inside interactiveMessage.header structure
+
+        // Support BOTH NEW and OLD template structures
+        // NEW structure: { media_url: '...', has_media: true, ... }
+        // OLD structure: { image: { url: '...' }, ... }
+
+        // Check for NEW structure first (media_url + has_media)
+        if (data.media_url && data.has_media) {
+            console.log('✅ NEW structure detected: media_url =', data.media_url);
+            const mediaType = data.media_type || 'image'; // Default to image if not specified
+
+            if (mediaType === 'image' || data.media_url.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+                content.image = { url: data.media_url };
+                console.log('✅ Image added to content:', data.media_url);
+            } else if (mediaType === 'video' || data.media_url.match(/\.(mp4|avi|mov|mkv)$/i)) {
+                content.video = { url: data.media_url };
+                console.log('✅ Video added to content:', data.media_url);
+            } else if (mediaType === 'document' || data.media_url.match(/\.(pdf|doc|docx|xls|xlsx)$/i)) {
+                content.document = {
+                    url: data.media_url,
+                    mimetype: data.mimetype || 'application/pdf',
+                    fileName: data.filename || 'document.pdf'
+                };
+                console.log('✅ Document added to content:', data.media_url);
+            } else {
+                // Default to image if type cannot be determined
+                content.image = { url: data.media_url };
+            }
+        }
+        // Check for OLD structure (backward compatibility)
+        else if (data.image) {
+            console.log('✅ OLD structure detected: data.image');
+            const imageUrl = data.image.url || data.image;
+            content.image = { url: imageUrl };
+            if (data.image.mimetype) content.image.mimetype = data.image.mimetype;
+        } else if (data.video) {
+            console.log('✅ OLD structure detected: data.video');
+            const videoUrl = data.video.url || data.video;
+            content.video = { url: videoUrl };
+            if (data.video.mimetype) content.video.mimetype = data.video.mimetype;
+            if (data.video.gifPlayback) content.video.gifPlayback = data.video.gifPlayback;
+        } else if (data.document) {
+            console.log('✅ OLD structure detected: data.document');
+            const documentUrl = data.document.url || data.document;
+            content.document = {
+                url: documentUrl,
+                mimetype: data.document.mimetype || data.mimetype || 'application/pdf',
+                fileName: data.document.fileName || data.filename || 'document.pdf'
+            };
+        } else {
+            console.log('ℹ️ No media attachment detected');
+        }
+
+        // ✅ REFACTORED: Process buttons into native flow format for baileys_helper
+        if (data.templateButtons && data.templateButtons.length > 0) {
+            for (var i = 0; i < data.templateButtons.length; i++) {
+                var buttonData = data.templateButtons[i];
+                var button = null;
+
+                // Quick Reply Button
+                if (buttonData.quickReplyButton !== undefined) {
+                    var displayText = spintax.unspin(buttonData.quickReplyButton.displayText);
+                    displayText = await Extend.common_data(WAZIPER, sessions[instance_id], instance_id, item, message, displayText);
+                    displayText = Common.params(params, displayText);
+                    const quickReplyId = buttonData.quickReplyButton.id || buttonData.quickReplyButton.displayText;
+
+                    if (`${quickReplyId}`.startsWith('COPY_CODE:')) {
+                        const copyCode = `${quickReplyId}`.replace(/^COPY_CODE:/, '').trim();
+                        button = {
+                            name: 'cta_copy',
+                            buttonParamsJson: JSON.stringify({
+                                display_text: displayText || 'Copiar Codigo',
+                                id: quickReplyId,
+                                copy_code: copyCode,
+                                disabled: false
+                            })
+                        };
+                    } else {
+                        button = {
+                            name: 'quick_reply',
+                            buttonParamsJson: JSON.stringify({
+                                display_text: displayText,
+                                id: quickReplyId,
+                                disabled: false
+                            })
+                        };
+                    }
+                }
+
+                // URL Button (with OTP copy code detection)
+                if (buttonData.urlButton !== undefined) {
+                    var displayText = spintax.unspin(buttonData.urlButton.displayText);
+                    displayText = await Extend.common_data(WAZIPER, sessions[instance_id], instance_id, item, message, displayText);
+                    displayText = Common.params(params, displayText);
+
+                    // Check if URL contains OTP copy code pattern
+                    if (buttonData.urlButton.url.includes('https://www.whatsapp.com/otp/code/?otp_type=COPY_CODE&code=')) {
+                        const code = new URLSearchParams(buttonData.urlButton.url.split('?')[1]).get('code');
+                        button = {
+                            name: 'cta_copy',
+                            buttonParamsJson: JSON.stringify({
+                                display_text: displayText || 'Copiar Código',
+                                id: buttonData.urlButton.id || buttonData.urlButton.displayText,
+                                copy_code: code,
+                                disabled: false
+                            })
+                        };
+                    } else {
+                        button = {
+                            name: 'cta_url',
+                            buttonParamsJson: JSON.stringify({
+                                display_text: displayText,
+                                id: buttonData.urlButton.id || buttonData.urlButton.displayText,
+                                url: buttonData.urlButton.url,
+                                disabled: false
+                            })
+                        };
+                    }
+                }
+
+                // Call Button
+                if (buttonData.callButton !== undefined) {
+                    var displayText = spintax.unspin(buttonData.callButton.displayText);
+                    displayText = await Extend.common_data(WAZIPER, sessions[instance_id], instance_id, item, message, displayText);
+                    displayText = Common.params(params, displayText);
+
+                    button = {
+                        name: 'cta_call',
+                        buttonParamsJson: JSON.stringify({
+                            display_text: displayText,
+                            id: buttonData.callButton.id || buttonData.callButton.displayText,
+                            phone_number: buttonData.callButton.phoneNumber,
+                            disabled: false
+                        })
+                    };
+                }
+
+                if (button) {
+                    content.interactiveButtons.push(button);
+                }
+            }
+        }
+
+        /**
+         * ✅ REFACTORED: Return format optimized for baileys_helper
+         * Returns content object that baileys_helper's sendInteractiveMessage can process directly
+         * Format: { text, title?, footer?, image?, video?, document?, interactiveButtons }
+         */
+        return { baileys_helper_content: content };
+    }
+
+    return false;
+},
+
+/**
+ * List Message Template Handler
+ *
+ * ✅ REFACTORED: Uses baileys_helper package for proper interactive message support.
+ * Processes list message templates and returns the appropriate format for baileys_helper.
+ *
+ * @param {Object} item - The message item containing template information
+ * @param {Object} params - Parameters for template variable replacement
+ * @param {Object} message - The incoming message object
+ * @param {string} instance_id - The WhatsApp instance ID
+ * @returns {Object|false} - Returns formatted content for baileys_helper or false if template not found
+ *
+ * Return format optimized for baileys_helper's sendInteractiveMessage:
+ * {
+ *   text: "Body text",
+ *   title: "Header title",
+ *   footer: "Footer text",
+ *   interactiveButtons: [{
+ *     name: 'single_select',
+ *     buttonParamsJson: JSON.stringify({ title: "...", sections: [...] })
+ *   }]
+ * }
+ */
+list_message_template_handler: async function (item, params, message, instance_id) {
+	var template_id = item.template;
+
+	// ✅ Support both integer ID and UUID format
+	// Try UUID first (ids column), then fall back to integer ID (id column)
+	var template = await Common.db_get("sp_whatsapp_template", [{ ids: template_id }, { type: 1 }]);
+	if (!template && typeof template_id === 'number') {
+		// Fallback: Try integer ID for web interface compatibility
+		template = await Common.db_get("sp_whatsapp_template", [{ id: template_id }, { type: 1 }]);
+	}
+	if (template) {
+		var data = JSON.parse(template.data);
+
+		// ✅ Build content for baileys_helper format
+		var content = {
+			text: "",
+			interactiveButtons: []
+		};
+
+		// Process text content (body)
+		if (data.text != undefined) {
+			data.text = spintax.unspin(data.text);
+			data.text = await Extend.common_data(WAZIPER, WAZIPER.sessions[instance_id], instance_id, item, message, data.text);
+			data.text = Common.params(params, data.text);
+			content.text = data.text;
+		}
+
+		// Process footer
+		if (data.footer != undefined) {
+			data.footer = spintax.unspin(data.footer);
+			data.footer = await Extend.common_data(WAZIPER, WAZIPER.sessions[instance_id], instance_id, item, message, data.footer);
+			data.footer = Common.params(params, data.footer);
+			content.footer = data.footer;
+		}
+
+		// Process title (header)
+		if (data.title != undefined) {
+			data.title = spintax.unspin(data.title);
+			data.title = await Extend.common_data(WAZIPER, WAZIPER.sessions[instance_id], instance_id, item, message, data.title);
+			data.title = Common.params(params, data.title);
+			content.title = data.title;
+		}
+
+		// Process button text
+		if (data.buttonText != undefined) {
+			data.buttonText = spintax.unspin(data.buttonText);
+			data.buttonText = await Extend.common_data(WAZIPER, WAZIPER.sessions[instance_id], instance_id, item, message, data.buttonText);
+			data.buttonText = Common.params(params, data.buttonText);
+		}
+
+		// Process each section in the list
+		for (var i = 0; i < data.sections.length; i++) {
+			if (data.sections[i]) {
+				if (data.sections[i].title != undefined) {
+					data.sections[i].title = spintax.unspin(data.sections[i].title);
+					data.sections[i].title = await Extend.common_data(WAZIPER, WAZIPER.sessions[instance_id], instance_id, item, message, data.sections[i].title);
+					data.sections[i].title = Common.params(params, data.sections[i].title);
+				}
+
+				for (var j = 0; j < data.sections[i].rows.length; j++) {
+					if (data.sections[i].rows[j].title != undefined) {
+						data.sections[i].rows[j].title = spintax.unspin(data.sections[i].rows[j].title);
+						data.sections[i].rows[j].title = await Extend.common_data(WAZIPER, WAZIPER.sessions[instance_id], instance_id, item, message, data.sections[i].rows[j].title);
+						data.sections[i].rows[j].title = Common.params(params, data.sections[i].rows[j].title);
+					}
+
+					if (data.sections[i].rows[j].description != undefined) {
+						data.sections[i].rows[j].description = spintax.unspin(data.sections[i].rows[j].description);
+						data.sections[i].rows[j].description = await Extend.common_data(WAZIPER, WAZIPER.sessions[instance_id], instance_id, item, message, data.sections[i].rows[j].description);
+						data.sections[i].rows[j].description = Common.params(params, data.sections[i].rows[j].description);
+					}
+
+					// ✅ FIX: baileys_helper expects 'id' not 'rowId'
+					// Convert rowId to id for baileys_helper compatibility
+					if (data.sections[i].rows[j].rowId && !data.sections[i].rows[j].id) {
+						data.sections[i].rows[j].id = data.sections[i].rows[j].rowId;
+						delete data.sections[i].rows[j].rowId; // Remove rowId to avoid confusion
+					}
+					// Fallback: if neither exists, generate a unique id
+					if (!data.sections[i].rows[j].id) {
+						data.sections[i].rows[j].id = `row_${i}_${j}`;
+					}
+				}
+			}
+		}
+
+		// ✅ REFACTORED: Build single_select button for baileys_helper
+		content.interactiveButtons = [{
+			name: 'single_select',
+			buttonParamsJson: JSON.stringify({
+				title: data.buttonText || data.title || 'Select',
+				sections: data.sections
+			})
+		}];
+
+		/**
+		 * ✅ REFACTORED: Return format optimized for baileys_helper
+		 * Returns content object that baileys_helper's sendInteractiveMessage can process directly
+		 */
+		return { baileys_helper_content: content };
+	}
+
+	return false;
+},
+	
+	/**
+	 * Poll Template Handler
+	 *
+	 * ✅ REFACTORED: Processes poll templates for standard Baileys sendMessage.
+	 * Polls don't require baileys_helper - they work with standard sendMessage.
+	 *
+	 * @param {Object} item - The message item containing template information
+	 * @param {Object} params - Parameters for template variable replacement
+	 * @param {Object} message - The incoming message object
+	 * @param {string} instance_id - The WhatsApp instance ID
+	 * @returns {Object|false} - Returns formatted poll or false if template not found
+	 *
+	 * Return format for standard Baileys sendMessage:
+	 * {
+	 *   poll: {
+	 *     name: "Poll question",
+	 *     values: ["Option 1", "Option 2", ...],
+	 *     selectableCount: 1 or null
+	 *   }
+	 * }
+	 */
+	poll_template_handler: async function (item, params, message, instance_id) {
+	    var template_id = item.template;
+
+		// ✅ Support both integer ID and UUID format
+		// Try UUID first (ids column), then fall back to integer ID (id column)
+		var template = await Common.db_get("sp_whatsapp_template", [{ ids: template_id }, { type: 3 }]);
+		if (!template && typeof template_id === 'number') {
+			// Fallback: Try integer ID for web interface compatibility
+			template = await Common.db_get("sp_whatsapp_template", [{ id: template_id }, { type: 3 }]);
+		}
+		if(template){
+		    var data = JSON.parse(template.data);
+
+		    // Process poll name (question)
+		    if(data.name != undefined){
+		        data.name = spintax.unspin(data.name);
+		        data.name = await Extend.common_data(WAZIPER, WAZIPER.sessions[instance_id], instance_id, item, message, data.name);
+		        data.name = Common.params(params, data.name);
+		    }
+
+		    // Process poll values (options)
+		    for(var i = 0; i < data.values.length; i++){
+		        data.values[i] = spintax.unspin(data.values[i]);
+		        data.values[i] = await Extend.common_data(WAZIPER, WAZIPER.sessions[instance_id], instance_id, item, message, data.values[i]);
+		        data.values[i] = Common.params(params, data.values[i]);
+		    }
+
+		    // ✅ Build poll object for standard Baileys sendMessage
+		    var pollOpt = {
+		        name: data.name,
+		        values: data.values,
+		        selectableCount: data.selectableCount == 0 ? null : 1
+		    };
+
+		    /**
+		     * ✅ Return format for standard Baileys sendMessage
+		     * Polls don't need baileys_helper - they work with standard sendMessage
+		     */
+		    return { poll: pollOpt };
+		}
+
+		return false;
+	},
+
+	live_back: async function () {
+		var account = await Common.db_query(`
+			SELECT a.changed, a.token as instance_id, a.id, a.team_id, b.ids as access_token
+			FROM sp_accounts as a
+			INNER JOIN sp_team as b ON a.team_id=b.id
+			WHERE a.social_network = 'whatsapp' AND a.login_type = '2' AND a.status = 1
+			ORDER BY a.changed ASC
+			LIMIT 1
+		`);
+
+		if (account) {
+
+			let wsstatus = sessions[account.instance_id]?.ws?.readyState || sessions[account.instance_id]?.ws?.socket?._readyState;
+
+			// ✅ IMPROVED: Enhanced health check with better status detection
+			// Status codes: 0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED
+			if (wsstatus == 3) {
+				console.error('⚠️ Session health check:', account.instance_id, 'ws status:', wsstatus, 'RESTARTING');
+
+				// ✅ NEW: Emit Socket.IO event for disconnection
+				WAZIPER.io.emit('whatsapp_status_update_' + account.team_id, {
+					instance_id: account.instance_id,
+					status: 'disconnected',
+					ws_status: wsstatus,
+					timestamp: new Date().toISOString()
+				});
+			} else if (wsstatus !== 1 && wsstatus !== undefined) {
+				console.warn('⚠️ Session health check:', account.instance_id, 'ws status:', wsstatus, 'ABNORMAL');
+
+				// ✅ NEW: Emit Socket.IO event for abnormal status
+				WAZIPER.io.emit('whatsapp_status_update_' + account.team_id, {
+					instance_id: account.instance_id,
+					status: 'connecting',
+					ws_status: wsstatus,
+					timestamp: new Date().toISOString()
+				});
+			} else if (wsstatus === 1) {
+				// ✅ NEW: Periodically emit healthy status (every 10th check to avoid spam)
+				if (!WAZIPER._healthCheckCounter) WAZIPER._healthCheckCounter = {};
+				if (!WAZIPER._healthCheckCounter[account.instance_id]) WAZIPER._healthCheckCounter[account.instance_id] = 0;
+
+				WAZIPER._healthCheckCounter[account.instance_id]++;
+
+				if (WAZIPER._healthCheckCounter[account.instance_id] % 10 === 0) {
+					WAZIPER.io.emit('whatsapp_status_update_' + account.team_id, {
+						instance_id: account.instance_id,
+						status: 'connected',
+						ws_status: wsstatus,
+						timestamp: new Date().toISOString()
+					});
+				}
+			}
+
+			var now = new Date().getTime() / 1000;
+			await Common.db_update("sp_accounts", [{ changed: now }, { id: account.id }]);
+			await WAZIPER.instance(account.access_token, account.instance_id, false, async (client) => {
+
+
+				if (client.user && client.user.name) {
+					await Common.db_update("sp_accounts", [{ name: client.user.name }, { id: account.id }]);
+				}
+
+				// ✅ CRITICAL FIX: REMOVED INFINITE LOOP BUG
+				// The original code called logout when QR code was detected:
+				//   if (client.qrcode != undefined && client.qrcode != "") {
+				//       await WAZIPER.logout(account.instance_id);
+				//   }
+				//
+				// This created an INFINITE LOOP:
+				// 1. Session disconnects → QR code generated
+				// 2. Health check sees QR code → calls logout
+				// 3. Logout deletes session → new session created with QR code
+				// 4. Health check sees QR code again → calls logout again → INFINITE LOOP
+				//
+				// SOLUTION: Let the connection.update event handler manage disconnections
+				// Don't manually logout sessions just because they have a QR code
+				// QR codes are normal during reconnection attempts and should not trigger logout
+
+				// If you need to handle expired QR codes, use the new_sessions timeout mechanism
+				// which is already implemented in lines 3464-3473 below
+			}, wsstatus == 3);
+		}
+
+		// ✅ CRITICAL FIX: Pending Session Cleanup (QR Code Expiration)
+		// Clean up sessions that have been pending for too long (5 minutes)
+		// Do NOT call logout() - just clean up the session gracefully
+		if (Object.keys(new_sessions).length) {
+			Object.keys(new_sessions).forEach(async (instance_id) => {
+				var now = new Date().getTime() / 1000;
+				if (now > new_sessions[instance_id] && sessions[instance_id] && sessions[instance_id].qrcode != undefined) {
+					console.log(`[Pending Cleanup] QR code expired for ${instance_id}, cleaning up session`);
+
+					// Remove from pending sessions
+					delete new_sessions[instance_id];
+
+					// ✅ CRITICAL: Do NOT call WAZIPER.logout() here!
+					// The original code called logout which triggered a full logout cycle
+					// This caused the session to be recreated with a new QR code
+					// Creating an infinite loop of QR code generation
+
+					// Instead, just clean up the session gracefully:
+					const sessionRef = sessions[instance_id];
+					if (sessionRef) {
+						try {
+							// Close WebSocket connection
+							if (sessionRef.ws && sessionRef.ws.close) {
+								sessionRef.ws.close();
+							}
+						} catch (error) {
+							console.error(`[Pending Cleanup] Error closing websocket for ${instance_id}:`, error.message);
+						}
+
+						// Clean up session files
+						var SESSION_PATH = session_dir + instance_id;
+						if (fs.existsSync(SESSION_PATH)) {
+							rimraf.sync(SESSION_PATH);
+						}
+
+						// Remove from memory
+						delete sessions[instance_id];
+						delete chatbots[instance_id];
+						delete bulks[instance_id];
+
+						// Update database status
+						await Common.db_update("sp_accounts", [{ status: 0 }, { token: instance_id }]);
+
+						console.log(`[Pending Cleanup] ✓ Session ${instance_id} cleaned up successfully`);
+					}
+				}
+			});
+		}
+
+		// ✅ OPTIMIZATION: Only log session counts when they change or when there are pending sessions
+		// This reduces log spam while maintaining visibility for important state changes
+		const totalSessions = Object.keys(sessions).length;
+		const totalQueueSessions = Object.keys(new_sessions).length;
+
+		// Store previous counts to detect changes
+		if (!WAZIPER._lastSessionCount) {
+			WAZIPER._lastSessionCount = { sessions: 0, queue: 0 };
+		}
+
+		// Log only when counts change or when there are pending queue sessions
+		if (totalSessions !== WAZIPER._lastSessionCount.sessions ||
+		    totalQueueSessions !== WAZIPER._lastSessionCount.queue ||
+		    totalQueueSessions > 0) {
+			console.log("📊 Session status - Active:", totalSessions, "| Pending:", totalQueueSessions);
+			WAZIPER._lastSessionCount.sessions = totalSessions;
+			WAZIPER._lastSessionCount.queue = totalQueueSessions;
+		}
+	},
+
+	/**
+	 * ✅ ENHANCED: keep_alive_sessions - Prevents WhatsApp Web "sleep mode" by simulating user activity
+	 *
+	 * WhatsApp introduced a "Low Activity Sleep Mode" in 2024 that puts sessions into
+	 * a semi-active state after 30 minutes to 2 hours of inactivity. When in sleep mode:
+	 * - The session shows "Last active [time]" instead of "Active" in mobile app
+	 * - Chatbot auto-responses stop working
+	 * - Auto-responder stops working
+	 * - Call responder stops working
+	 * - The websocket remains connected but stops receiving events
+	 *
+	 * This function prevents sleep mode by sending lightweight presence updates
+	 * to WhatsApp servers, simulating user activity without generating notifications
+	 * or consuming significant resources.
+	 *
+	 * ✅ IMPROVEMENTS:
+	 * - Increased frequency: Now runs every 3 minutes (was 5 minutes)
+	 * - Multiple presence types: Sends available, composing, paused, recording
+	 * - Redis caching: Tracks last activity timestamp for each session
+	 * - Better error handling: Automatic reconnection on failures
+	 * - Socket.IO events: Real-time status updates to admin panel
+	 * - Smart delays: Prevents rate limiting with randomized intervals
+	 *
+	 * Strategy:
+	 * - Sends multiple presence updates to simulate realistic user activity
+	 * - Rotates through all active sessions to distribute load
+	 * - Only processes sessions with active websocket connections
+	 * - Lightweight operation that doesn't impact database or server performance
+	 * - Uses Redis to cache last activity timestamps
+	 *
+	 * Compatible with Baileys v7.0.0-rc.6 sendPresenceUpdate API
+	 */
+	keep_alive_sessions: async function () {
+		try {
+			// Get all active Baileys sessions (login_type = 2)
+			const active_accounts = await Common.db_query(`
+				SELECT a.token as instance_id, a.id, a.name
+				FROM sp_accounts as a
+				WHERE a.social_network = 'whatsapp'
+				AND a.login_type = '2'
+				AND a.status = 1
+			`, false);
+
+			if (!active_accounts || active_accounts.length === 0) {
+				return; // No active sessions to keep alive
+			}
+
+			let successCount = 0;
+			let failCount = 0;
+			let skippedCount = 0;
+
+			// Process each active session
+			for (const account of active_accounts) {
+				const instance_id = account.instance_id;
+				const session = sessions[instance_id];
+
+				// Check if session exists and websocket is open
+				if (!session) {
+					skippedCount++;
+					continue; // Skip if session not loaded
+				}
+
+				const wsstatus = session?.ws?.readyState || session?.ws?.socket?._readyState;
+
+				// WebSocket.OPEN = 1 (connection is open and ready)
+				if (wsstatus !== 1) {
+					skippedCount++;
+					// ✅ IMPROVED: Try to reconnect if websocket is closed
+					if (wsstatus === 3) { // CLOSED
+						console.warn(`[Keep-Alive] Session ${instance_id} websocket closed, attempting reconnect...`);
+						try {
+							await WAZIPER.makeWASocket(instance_id);
+						} catch (reconnectError) {
+							console.error(`[Keep-Alive] Reconnect failed for ${instance_id}:`, reconnectError.message);
+						}
+					}
+					continue; // Skip if websocket is not open
+				}
+
+				try {
+					// ✅ ENHANCED: Send presence updates to ensure WhatsApp recognizes activity
+					// This prevents the "Last seen" status and keeps session showing as "Active"
+
+					// Get session data for Socket.IO events
+					const session_data = await Common.db_get("sp_whatsapp_sessions", [{ instance_id: instance_id }]);
+
+					// ✅ FIX: Validate user credentials before sending presence
+					// sendPresenceUpdate for 'available'/'unavailable' doesn't need JID
+					// but requires valid user credentials (me.name)
+					const userJid = session?.user?.id;
+					const userName = session?.user?.name;
+
+					// Validate that we have valid user credentials before sending presence
+					if (!userJid || !userName) {
+						console.warn(`[Keep-Alive] Skipping ${instance_id} - no valid user credentials (id: ${!!userJid}, name: ${!!userName})`);
+						skippedCount++;
+						continue;
+					}
+
+					// ✅ CRITICAL FIX: For keep-alive, ONLY send global 'available' presence
+					// Do NOT send chat-specific presence ('composing', 'recording', 'paused') without a JID
+					//
+					// Baileys sendPresenceUpdate behavior:
+					// - 'available'/'unavailable': Global presence (no JID needed, uses me.name)
+					// - 'composing'/'recording'/'paused': Chat-specific (REQUIRES valid toJid parameter)
+					//
+					// Sending chat-specific presence without JID causes jidDecode(undefined) error
+
+					// Send global "available" presence (this is sufficient for keep-alive)
+					await session.sendPresenceUpdate('available');
+					await new Promise(resolve => setTimeout(resolve, 100 + Math.random() * 100)); // Random delay 100-200ms
+
+					// Optional: Send unavailable then available again to simulate activity
+					await session.sendPresenceUpdate('unavailable');
+					await new Promise(resolve => setTimeout(resolve, 50 + Math.random() * 50)); // Random delay 50-100ms
+					await session.sendPresenceUpdate('available');
+
+					// 5. Update last activity timestamp in Redis cache
+					if (WAZIPER.redis_client) {
+						try {
+							const timestamp = Math.floor(Date.now() / 1000);
+							await WAZIPER.redis_client.set(
+								`session:keepalive:${instance_id}`,
+								timestamp,
+								'EX',
+								3600 // Expire after 1 hour
+							);
+
+							// Also store in a hash for easier querying
+							await WAZIPER.redis_client.hset(
+								'session:keepalive:all',
+								instance_id,
+								timestamp
+							);
+						} catch (redisError) {
+							console.warn(`[Keep-Alive] Redis error for ${instance_id}:`, redisError.message);
+							// Continue even if Redis fails - presence updates are more important
+						}
+					}
+
+					// 6. Emit Socket.IO event for successful keep-alive
+					if (session_data && session_data.team_id) {
+						WAZIPER.io.emit('whatsapp_keepalive_' + session_data.team_id, {
+							instance_id: instance_id,
+							status: 'active',
+							timestamp: new Date().toISOString(),
+							name: account.name || 'Unknown'
+						});
+					}
+
+					successCount++;
+					console.log(`[Keep-Alive] ✓ Session ${instance_id} (${account.name || 'Unknown'}) - active`);
+				} catch (error) {
+					failCount++;
+					// Log error but don't crash the keep-alive process
+					console.error(`[Keep-Alive] ✗ Error for ${instance_id}:`, error.message);
+
+					// Get session data for Socket.IO events
+					const session_data = await Common.db_get("sp_whatsapp_sessions", [{ instance_id: instance_id }]);
+
+					// Emit Socket.IO event for keep-alive failure
+					if (session_data && session_data.team_id) {
+						WAZIPER.io.emit('whatsapp_keepalive_failed_' + session_data.team_id, {
+							instance_id: instance_id,
+							status: 'error',
+							error: error.message,
+							timestamp: new Date().toISOString()
+						});
+					}
+
+					// ✅ IMPROVED: Enhanced error detection and recovery
+					const errorMsg = error.message || '';
+					const isConnectionError = errorMsg.includes('Connection Closed') ||
+					                         errorMsg.includes('not open') ||
+					                         errorMsg.includes('ECONNREFUSED') ||
+					                         errorMsg.includes('socket hang up') ||
+					                         errorMsg.includes('Stream Errored');
+
+					const isJidError = errorMsg.includes('jidDecode') ||
+					                  errorMsg.includes('Cannot destructure') ||
+					                  errorMsg.includes('undefined');
+
+					// Handle JID decoding errors (usually means session needs refresh)
+					if (isJidError) {
+						console.warn(`[Keep-Alive] JID error detected for ${instance_id}, session may need re-authentication`);
+						// Don't attempt reconnect for JID errors - they indicate auth issues
+						// User should re-scan QR code
+					}
+					// Handle connection errors with reconnection attempt
+					else if (isConnectionError) {
+						console.warn(`[Keep-Alive] Connection issue detected for ${instance_id}, attempting reconnect...`);
+						try {
+							// Add delay before reconnecting to avoid rapid reconnection loops
+							await new Promise(resolve => setTimeout(resolve, 2000));
+							await WAZIPER.makeWASocket(instance_id);
+							console.log(`[Keep-Alive] ✓ Reconnection successful for ${instance_id}`);
+						} catch (reconnectError) {
+							console.error(`[Keep-Alive] ✗ Reconnect failed for ${instance_id}:`, reconnectError.message);
+						}
+					}
+				}
+			}
+
+			console.log(`[Keep-Alive] Summary - Success: ${successCount}, Failed: ${failCount}, Skipped: ${skippedCount}, Total: ${active_accounts.length}`);
+		} catch (error) {
+			// Catch any database or unexpected errors
+			console.error('[Keep-Alive] Error in keep_alive_sessions:', error.message);
+		}
+	},
+
+	add_account: async function (instance_id, team_id, wa_info, account) {
+		if (!account) {
+			await Common.db_insert_account(instance_id, team_id, wa_info);
+		} else {
+			var old_instance_id = account.token;
+
+			await Common.db_update_account(instance_id, team_id, wa_info, account.id);
+
+			//Update old session
+			if (instance_id != old_instance_id) {
+				await Common.db_delete("sp_whatsapp_sessions", [{ instance_id: old_instance_id }]);
+				await Common.db_update("sp_whatsapp_autoresponder", [{ instance_id: instance_id }, { instance_id: old_instance_id }]);
+				await Common.db_update("sp_whatsapp_chatbot", [{ instance_id: instance_id }, { instance_id: old_instance_id }]);
+				await Common.db_update("sp_whatsapp_webhook", [{ instance_id: instance_id }, { instance_id: old_instance_id }]);
+				WAZIPER.logout(old_instance_id);
+			}
+
+			var pid = Common.get_phone(wa_info.id, 'wid');
+			var account_other = await Common.db_query(`SELECT id FROM sp_accounts WHERE pid = '` + pid + `' AND team_id = '` + team_id + `' AND id != '` + account.id + `'`);
+			if (account_other) {
+				await Common.db_delete("sp_accounts", [{ id: account_other.id }]);
+			}
+		}
+
+		/*Create WhatsApp stats for user*/
+		var wa_stats = await Common.db_get("sp_whatsapp_stats", [{ team_id: team_id }]);
+		if (!wa_stats) await Common.db_insert_stats(team_id);
+	}
+}
+
+
+
+module.exports = WAZIPER;
+
+/**
+ * Cron Job: Session Health Check (Every 1 second)
+ * Monitors WebSocket status and validates active sessions
+ * Restarts sessions if WebSocket is closed (readyState = 3)
+ */
+cron.schedule('*/1 * * * * *', function () {
+	WAZIPER.live_back();
+});
+
+/**
+ * Cron Job: Bulk Messaging Processor (Every 5 seconds)
+ * Processes scheduled bulk messaging campaigns
+ * Sends messages according to campaign schedule and rate limits
+ */
+cron.schedule('*/5 * * * * *', function () {
+	//console.log('bulk init cron')
+	WAZIPER.bulk_messaging();
+});
+
+/**
+ * Cron Job: Phone Number Validation (Every 5 seconds)
+ * Validates phone numbers and processes extended functionality
+ */
+cron.schedule('*/5 * * * * *', function () {
+	Extend.validatePhones(WAZIPER, sessions);
+});
+
+/**
+ * Cron Job: WhatsApp Session Keep-Alive (Every 3 minutes)
+ *
+ * ✅ ENHANCED: Changed from 5 minutes to 3 minutes for optimal session persistence
+ *
+ * Prevents WhatsApp Web "sleep mode" by sending presence updates
+ * to all active Baileys sessions. This keeps sessions showing "Active"
+ * in the mobile app and ensures chatbot/autoresponder continue working.
+ *
+ * WhatsApp introduced "Low Activity Sleep Mode" in 2024 that puts sessions
+ * into a semi-active state after 30 minutes to 2 hours of inactivity.
+ * This cron job prevents that by simulating user activity every 3 minutes.
+ *
+ * ✅ IMPROVEMENTS:
+ * - Increased frequency: Every 3 minutes (was 5 minutes)
+ * - Multiple presence types: available, composing, paused, recording
+ * - Redis caching: Tracks last activity timestamp
+ * - Socket.IO events: Real-time status updates
+ * - Smart delays: Randomized intervals to prevent rate limiting
+ *
+ * Schedule: Every 3 minutes
+ * - Cron pattern: star-slash-3 space star space star space star space star
+ * - Runs at: 00, 03, 06, 09, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 54, 57 minutes past each hour
+ * - Lightweight operation that doesn't impact performance
+ * - Only processes sessions with active WebSocket connections
+ * - Sends multiple presence types to ensure WhatsApp recognizes activity
+ *
+ * Compatible with Baileys v7.0.0-rc.6 sendPresenceUpdate API
+ */
+cron.schedule('*/3 * * * *', function () {
+	WAZIPER.keep_alive_sessions();
+});

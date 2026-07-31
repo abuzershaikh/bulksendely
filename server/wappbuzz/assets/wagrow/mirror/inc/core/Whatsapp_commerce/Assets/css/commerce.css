@@ -1,0 +1,146 @@
+/* WhatsApp Commerce Module Styles */
+
+/* Product Cards */
+.product-card {
+    transition: all 0.2s ease;
+    border: 1px solid transparent !important;
+}
+.product-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.1) !important;
+    border-color: rgba(16, 185, 129, 0.2) !important;
+}
+
+/* Stats Cards */
+.whatsapp_commerce-main .card {
+    border-radius: 12px;
+}
+
+/* Status Badges */
+.whatsapp_commerce-main .badge {
+    font-weight: 500;
+    letter-spacing: 0.3px;
+    font-size: 11px;
+    padding: 4px 8px;
+}
+
+/* Timeline */
+.timeline .d-flex:not(:last-child)::before {
+    content: '';
+    position: absolute;
+    left: 18px;
+    top: 36px;
+    bottom: -12px;
+    width: 2px;
+    background: #e2e8f0;
+}
+.timeline .d-flex {
+    position: relative;
+}
+
+/* Charts */
+.whatsapp_commerce-main canvas {
+    max-height: 300px;
+}
+
+/* Toast Notifications */
+.commerce-toast {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 99999;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    opacity: 0;
+    transform: translateX(100%);
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+    max-width: 400px;
+}
+.commerce-toast.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+.toast-success {
+    background: linear-gradient(135deg, #10b981, #059669);
+    color: #fff;
+}
+.toast-error {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    color: #fff;
+}
+
+/* Table Improvements */
+.whatsapp_commerce-main .table th {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #64748b;
+    border-bottom-width: 1px;
+}
+.whatsapp_commerce-main .table td {
+    vertical-align: middle;
+    padding: 12px 8px;
+}
+
+/* Card Headers */
+.whatsapp_commerce-main .card-header {
+    border-bottom: 1px solid #f1f5f9;
+    padding: 14px 20px;
+}
+
+/* Form Improvements */
+.whatsapp_commerce-main .form-control,
+.whatsapp_commerce-main .form-select {
+    border-radius: 8px;
+    border-color: #e2e8f0;
+    padding: 8px 12px;
+}
+.whatsapp_commerce-main .form-control:focus,
+.whatsapp_commerce-main .form-select:focus {
+    border-color: #10b981;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+/* Button Polish */
+.whatsapp_commerce-main .btn {
+    border-radius: 8px;
+    font-weight: 500;
+}
+.whatsapp_commerce-main .btn-success {
+    background: linear-gradient(135deg, #10b981, #059669);
+    border: none;
+}
+.whatsapp_commerce-main .btn-success:hover {
+    background: linear-gradient(135deg, #059669, #047857);
+}
+
+/* Empty States */
+.whatsapp_commerce-main .text-center i.fad {
+    opacity: 0.4;
+}
+
+/* Variant Rows */
+.variant-row {
+    background: #fafbfc;
+    border-color: #e2e8f0 !important;
+    transition: background 0.2s;
+}
+.variant-row:hover {
+    background: #f0fdf4;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+    .whatsapp_commerce-main .container-fluid {
+        padding-left: 12px !important;
+        padding-right: 12px !important;
+    }
+    .whatsapp_commerce-main .d-flex.justify-content-between {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+}
