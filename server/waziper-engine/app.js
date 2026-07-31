@@ -967,6 +967,11 @@ async function processQueuedCampaignRow(queueRow) {
             }
 
             const currentRecipient = recipients[currentIndex] || {};
+            const recipientStatus = `${currentRecipient?.status || ''}`.toLowerCase();
+            if (recipientStatus === 'sent' || recipientStatus === 'timeout_pending') {
+                currentIndex += 1;
+                continue;
+            }
             let sentSuccessfully = false;
 
             try {
