@@ -4255,3 +4255,97 @@ global.AndroidCampaignTracker = {
         }
     }
 };
+
+
+// ============================================================================
+// CLOUD BACKUP & RESTORE ENDPOINTS
+// ============================================================================
+WAZIPER.app.all('/api/user/backup', WAZIPER.cors, async (req, res) => {
+    try {
+        const params = req.method === 'GET' ? req.query : { ...req.query, ...req.body };
+        const user_email = `${params.user_email || params.email || ''}`.trim().toLowerCase();
+        let backup_data = params.backup_data;
+
+        if (!user_email) {
+            return res.json({ status: 'error', message: 'user_email is required' });
+        }
+
+        if (typeof backup_data === 'object') {
+            backup_data = JSON.stringify(backup_data);
+        } else if (typeof backup_data === 'string') {
+            backup_data = backup_data.trim();
+        }
+
+        if (!backup_data) {
+            return res.json({ status: 'error', message: 'backup_data is required' });
+        }
+
+        const now = Common.time();
+        const existing = await Common.db_get('sp_user_backups', [{ user_email }]);
+
+        if (existing) {
+            await Common.db_update('sp_user_backups', [
+                {
+                    backup_data,
+                    version: (existing.version || 1) + 1,
+                    updated_at: now,
+                },
+                { id: existing.id }
+            ]);
+        } else {
+            await Common.db_insert('sp_user_backups', {
+                user_email,
+                backup_data,
+                version: 1,
+                created_at: now,
+                updated_at: now,
+            });
+        }
+
+        return res.json({
+            status: 'success',
+            message: 'Backup saved successfully',
+            data: { user_email, updated_at: now }
+        });
+    } catch (error) {
+        console.error('Error in /api/user/backup:', error);
+        return res.json({ status: 'error', message: error.message });
+    }
+});
+
+WAZIPER.app.all('/api/user/restore', WAZIPER.cors, async (req, res) => {
+    try {
+        const params = req.method === 'GET' ? req.query : { ...req.query, ...req.body };
+        const user_email = `${params.user_email || params.email || ''}`.trim().toLowerCase();
+
+        if (!user_email) {
+            return res.json({ status: 'error', message: 'user_email is required' });
+        }
+
+        const row = await Common.db_get('sp_user_backups', [{ user_email }]);
+        if (!row || !row.backup_data) {
+            return res.json({ status: 'error', message: 'No backup found for this email' });
+        }
+
+        let parsedData;
+        try {
+            parsedData = JSON.parse(row.backup_data);
+        } catch (_) {
+            parsedData = row.backup_data;
+        }
+
+        return res.json({
+            status: 'success',
+            message: 'Backup retrieved successfully',
+            data: {
+                user_email: row.user_email,
+                backup_data: parsedData,
+                version: row.version,
+                updated_at: row.updated_at,
+            }
+        });
+    } catch (error) {
+        console.error('Error in /api/user/restore:', error);
+        return res.json({ status: 'error', message: error.message });
+    }
+});
