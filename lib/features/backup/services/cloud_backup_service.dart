@@ -26,7 +26,6 @@ class CloudBackupService {
   static const String _lastBackupKey = 'cloud_last_backup_time_v1';
   static const String _autoBackupKey = 'cloud_auto_backup_enabled_v1';
 
-  final ApiClient _apiClient = ApiClient();
   final GoogleAuthService _authService = GoogleAuthService();
 
   ValueNotifier<DateTime?> lastBackupNotifier = ValueNotifier<DateTime?>(null);
@@ -70,6 +69,8 @@ class CloudBackupService {
     final chatbotStorage = ChatbotTemplateStorage();
     final oneShotStorage = OneShotStorage.instance;
 
+    await contactStorage.load();
+    await templateStorage.load();
     await keywordStorage.load();
     await menuStorage.load();
     await autoreplyTemplateStorage.load();
@@ -81,9 +82,7 @@ class CloudBackupService {
     final contactsList = contactStorage.groups.map((g) => g.toJson()).toList();
 
     // 2. Templates
-    final buttonTemplates = templateStorage.buttonTemplates.map((t) => t.toJson()).toList();
-    final listTemplates = templateStorage.listTemplates.map((t) => t.toJson()).toList();
-    final quickReplies = templateStorage.quickReplies.map((q) => q.toJson()).toList();
+    final templates = templateStorage.templates.map((t) => t.toJson()).toList();
 
     // 3. AutoReply Rules
     final keywords = keywordStorage.flows.map((k) => k.toJson()).toList();
@@ -107,11 +106,7 @@ class CloudBackupService {
         'appName': 'Bulksendly',
       },
       'contacts': contactsList,
-      'templates': {
-        'buttonTemplates': buttonTemplates,
-        'listTemplates': listTemplates,
-        'quickReplies': quickReplies,
-      },
+      'templates': templates,
       'autoreply': {
         'keywords': keywords,
         'menus': menus,
@@ -139,9 +134,9 @@ class CloudBackupService {
     try {
       final payloadData = await exportAllData();
 
-      final response = await _apiClient.post(
-        '/api/user/backup',
-        data: {
+      final response = await ApiClient.post(
+        'api/user/backup',
+        {
           'user_email': email,
           'backup_data': jsonEncode(payloadData),
         },
@@ -172,9 +167,9 @@ class CloudBackupService {
     }
 
     try {
-      final response = await _apiClient.post(
-        '/api/user/restore',
-        data: {'user_email': email},
+      final response = await ApiClient.post(
+        'api/user/restore',
+        {'user_email': email},
       );
 
       if (response['status'] == 'success' && response['data'] != null) {
@@ -202,10 +197,11 @@ class CloudBackupService {
       final rawContacts = payload['contacts'];
       if (rawContacts is List) {
         final contactStorage = ContactStorage();
+        await contactStorage.load();
         for (final item in rawContacts) {
           if (item is Map<String, dynamic>) {
             final group = ContactGroupModel.fromJson(item);
-            await contactStorage.saveGroup(group);
+            contactStorage.addGroup(group);
             restoredItemsCount += group.contacts.length;
           }
         }
@@ -213,36 +209,13 @@ class CloudBackupService {
 
       // 2. Restore Templates
       final rawTemplates = payload['templates'];
-      if (rawTemplates is Map<String, dynamic>) {
+      if (rawTemplates is List) {
         final templateStorage = TemplateStorage();
-
-        final buttonList = rawTemplates['buttonTemplates'];
-        if (buttonList is List) {
-          for (final item in buttonList) {
-            if (item is Map<String, dynamic>) {
-              await templateStorage.saveButtonTemplate(ButtonTemplateModel.fromJson(item));
-              restoredItemsCount++;
-            }
-          }
-        }
-
-        final listList = rawTemplates['listTemplates'];
-        if (listList is List) {
-          for (final item in listList) {
-            if (item is Map<String, dynamic>) {
-              await templateStorage.saveListTemplate(ListTemplateModel.fromJson(item));
-              restoredItemsCount++;
-            }
-          }
-        }
-
-        final quickList = rawTemplates['quickReplies'];
-        if (quickList is List) {
-          for (final item in quickList) {
-            if (item is Map<String, dynamic>) {
-              await templateStorage.saveQuickReply(QuickReplyModel.fromJson(item));
-              restoredItemsCount++;
-            }
+        await templateStorage.load();
+        for (final item in rawTemplates) {
+          if (item is Map<String, dynamic>) {
+            templateStorage.addTemplate(ButtonTemplateModel.fromJson(item));
+            restoredItemsCount++;
           }
         }
       }
