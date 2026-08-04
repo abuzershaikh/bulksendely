@@ -1407,6 +1407,7 @@ class AppDrawer extends StatelessWidget {
                                 ),
                               );
                             },
+                          ),
                           _DrawerMenuItem(
                             icon: Icons.hub_rounded,
                             title: 'Group Sender Status',
