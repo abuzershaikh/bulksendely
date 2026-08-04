@@ -4,7 +4,7 @@ import 'package:autoreply/features/campaigns/models/one_shot_range_model.dart';
 import 'package:autoreply/features/campaigns/services/one_shot_storage.dart';
 import 'package:autoreply/features/campaigns/widgets/one_shot_settings_dialog.dart';
 import 'package:autoreply/features/contacts/screens/contact_groups_screen.dart';
-import 'package:autoreply/features/contacts/services/contact_storage.dart';
+import 'package:autoreply/data/local/contact_storage.dart';
 import 'package:flutter/material.dart';
 
 class SelectContactsOneShotScreen extends StatefulWidget {
@@ -492,9 +492,12 @@ class _SelectContactsOneShotScreenState
 
                           final resultGroup = ContactGroupModel(
                             id: _selectedGroup!.id,
+                            serverId: _selectedGroup!.serverId,
                             name:
                                 '${_selectedGroup!.name} (${_selectedRange?.startIndex}-${_selectedRange?.endIndex})',
                             contacts: selectedContactsList,
+                            createdAt: _selectedGroup!.createdAt,
+                            source: _selectedGroup!.source,
                           );
 
                           Navigator.pop(context, resultGroup);

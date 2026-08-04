@@ -16,6 +16,7 @@ import 'package:autoreply/features/subscription/screens/subscription_profile_scr
 import 'package:autoreply/features/subscription/services/subscription_service.dart';
 import 'package:autoreply/features/info/screens/app_info_screens.dart';
 import 'package:autoreply/features/chatbot_flow/screens/flow_manager_screen.dart';
+import 'package:autoreply/features/backup/screens/backup_restore_screen.dart';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 
@@ -1406,26 +1407,35 @@ class AppDrawer extends StatelessWidget {
                                 ),
                               );
                             },
+                          _DrawerMenuItem(
+                            icon: Icons.hub_rounded,
+                            title: 'Group Sender Status',
+                            subtitle: 'View group sender history',
+                            accentColor: const Color(0xFFF093FB),
+                            onTap: () {
+                              Navigator.pop(context);
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const GroupSenderStatusScreen(),
+                                ),
+                              );
+                            },
                           ),
-                            _DrawerMenuItem(
-                              icon: Icons.hub_rounded,
-                              title: 'Group Sender Status',
-                              subtitle: 'View group sender history',
-                              accentColor: const Color(0xFFF093FB),
-                              onTap: () {
-                                Navigator.pop(context);
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) =>
-                                        const GroupSenderStatusScreen(),
-                                  ),
-                                );
-                              },
+                          const SizedBox(height: 6),
+                          _buildDrawerDivider(),
+                          const SizedBox(height: 6),
+                          _DrawerMenuItem(
+                            icon: Icons.cloud_sync_rounded,
+                            title: 'Cloud Backup & Restore',
+                            subtitle: 'Backup contacts, chatbots & rules',
+                            accentColor: const Color(0xFF004D40),
+                            onTap: () => _openScreen(
+                              context,
+                              const BackupRestoreScreen(),
                             ),
-                            const SizedBox(height: 6),
-                            _buildDrawerDivider(),
-                            const SizedBox(height: 6),
+                          ),
                           _DrawerMenuItem(
                             icon: Icons.privacy_tip_rounded,
                             title: 'Privacy Policy',

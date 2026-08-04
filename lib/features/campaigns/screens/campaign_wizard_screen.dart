@@ -454,7 +454,7 @@ class _Step1Setup extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.filter_list_alt_rounded, color: Color(0xFF004D40)),
+                    const Icon(Icons.filter_list_rounded, color: Color(0xFF004D40)),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
