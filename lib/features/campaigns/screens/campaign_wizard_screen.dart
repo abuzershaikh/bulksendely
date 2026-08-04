@@ -10,6 +10,7 @@ import 'package:autoreply/core/network/api_client.dart';
 import 'package:autoreply/features/contacts/screens/contact_groups_screen.dart';
 import 'package:autoreply/features/media/services/cloudflare_upload_service.dart';
 import 'package:autoreply/features/templates/screens/create_template_screen.dart';
+import 'package:autoreply/features/campaigns/screens/select_contacts_oneshot_screen.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
@@ -403,7 +404,7 @@ class _Step1Setup extends StatelessWidget {
               decoration: BoxDecoration(color: Colors.orange.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
               child: const Text('No Contact Groups found. Please add a group first.', style: TextStyle(color: Colors.orange)),
             )
-          else
+          else ...[
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               decoration: BoxDecoration(
@@ -424,6 +425,65 @@ class _Step1Setup extends StatelessWidget {
                 ),
               ),
             ),
+            const SizedBox(height: 12),
+
+            // One Shot Range Selector Tile
+            InkWell(
+              onTap: () async {
+                final selectedGroupResult = await Navigator.push<ContactGroupModel>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (ctx) => SelectContactsOneShotScreen(
+                      initialGroup: draft.selectedGroup,
+                    ),
+                  ),
+                );
+
+                if (selectedGroupResult != null) {
+                  draft.selectedGroup = selectedGroupResult;
+                  onChanged();
+                }
+              },
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF004D40).withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFF004D40).withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.filter_list_alt_rounded, color: Color(0xFF004D40)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'One Shot Range Selection',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              color: Color(0xFF004D40),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            draft.selectedGroup != null
+                                ? 'Series Range Mode (${draft.selectedGroup!.contacts.length} contacts selected)'
+                                : 'Select series range, batch size & track sent history',
+                            style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right_rounded, color: Color(0xFF004D40)),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

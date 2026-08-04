@@ -4,6 +4,8 @@ import 'package:autoreply/features/campaigns/models/campaign_draft_model.dart';
 import 'package:autoreply/features/campaign_status/models/campaign_status_models.dart';
 import 'package:autoreply/features/subscription/services/subscription_service.dart';
 import 'package:autoreply/features/sync/services/server_sync_service.dart';
+import 'package:autoreply/features/campaigns/models/one_shot_range_model.dart';
+import 'package:autoreply/features/campaigns/services/one_shot_storage.dart';
 
 class CampaignSendResult {
   final int total;
@@ -244,6 +246,23 @@ class CampaignSendService {
         .toList();
 
     await _subscriptionService.recordSuccessfulSend(sentCount);
+
+    try {
+      final numbers = recipients.map((r) => r.number).toList();
+      await OneShotStorage.instance.markNumbersSent(group.id, numbers);
+      final nowStr = DateTime.now().toLocal().toString().split('.')[0];
+      await OneShotStorage.instance.addHistoryLog(
+        OneShotHistoryLog(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          groupId: group.id,
+          groupName: group.name,
+          rangeLabel: '${recipients.length} contacts (${group.name})',
+          sentCount: recipients.length,
+          totalCount: recipients.length,
+          timestamp: nowStr,
+        ),
+      );
+    } catch (_) {}
 
     return CampaignSendResult(
       total: recipients.length,
